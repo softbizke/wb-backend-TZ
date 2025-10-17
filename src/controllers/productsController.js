@@ -79,11 +79,13 @@ const getAllProductsTypes = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getAllCustomerType:", error);
+    console.error("Error in getAllCustomerType:", error.message);
 
     // Send error response
     res.status(500).json({
       success: false,
       message: "Failed to retrieve customer types",
+      error: error.message,
     });
   }
 };

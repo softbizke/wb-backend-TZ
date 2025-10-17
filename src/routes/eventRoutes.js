@@ -15,6 +15,7 @@ const driver = require("../controllers/driversController");
 const transporter = require("../controllers/transporterController");
 const buyingCenter = require("../controllers/buyingCenterController");
 const purchaseType = require("../controllers/purchaseTypeController");
+const supplier = require("../controllers/supplierController");
 const activities = require("../controllers/activitiesController");
 const deliveryorder = require("../controllers/deliveryorderController");
 const vessel = require("../controllers/vesselController");
@@ -266,6 +267,26 @@ router.post(
   authenticateToken.authenticateToken,
   purchaseType.getOrCreatePurchaseTypeByTitle
 );
+
+// -------------------- SUPPLIER ROUTES --------------------
+router.post(
+  "/createsupplier/v1",
+  authenticateToken.authenticateToken,
+  supplier.createOrUpdateSupplier
+);
+
+router.get(
+  "/supplier/list/v1",
+  authenticateToken.authenticateToken,
+  supplier.getAllSuppliers
+);
+
+router.post(
+  "/createorfindsupplier/v1",
+  authenticateToken.authenticateToken,
+  supplier.getOrCreateSupplierByPhone
+);
+
 
 
 // Create and update the status of a vessls

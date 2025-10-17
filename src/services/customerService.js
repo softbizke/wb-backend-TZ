@@ -174,7 +174,7 @@ const getAllCustomer = async (search) => {
 
     // Add a WHERE clause if search parameter is provided
     if (search) {
-      query += " WHERE name ILIKE $1";
+      query += " WHERE cus.name ILIKE $1";
       queryParams.push(`%${search}%`);
     }
 

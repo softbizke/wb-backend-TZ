@@ -151,7 +151,7 @@ const getAllProducts = async (search) => {
 
     // Add a WHERE clause if search parameter is provided
     if (search) {
-      query += " WHERE name ILIKE $1";
+      query += " WHERE prod.name ILIKE $1";
       queryParams.push(`%${search}%`);
     }
 

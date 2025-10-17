@@ -28,7 +28,10 @@ const createOrUpdateBuyingCenter = async (req, res) => {
 const getAllBuyingCenters = async (req, res) => {
   try {
     const { search } = req.query;
+    console.log("Search parameter:", search);
     const result = await buyingCenterService.getAllBuyingCenters(search);
+
+    console.log("Retrieved buying centers:", result);
 
     res.status(200).json({ success: true, data: result });
   } catch (error) {

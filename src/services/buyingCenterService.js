@@ -42,7 +42,7 @@ const getAllBuyingCenters = async (search) => {
     let query = "SELECT * FROM tos_buying_center";
     const params = [];
 
-    if (search) {
+    if (search && search.trim() !== "") {
       query += " WHERE title ILIKE $1";
       params.push(`%${search}%`);
     }

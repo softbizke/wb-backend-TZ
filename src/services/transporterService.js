@@ -44,7 +44,7 @@ const getAllTransporters = async (search) => {
     let query = "SELECT * FROM tos_transporter";
     const params = [];
 
-    if (search) {
+    if (search && search.trim() !== "") {
       query += " WHERE title ILIKE $1";
       params.push(`%${search}%`);
     }

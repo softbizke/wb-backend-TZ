@@ -43,7 +43,7 @@ const getAllPurchaseTypes = async (search) => {
     let query = "SELECT * FROM tos_purchase_type";
     const params = [];
 
-    if (search) {
+    if (search && search.trim() !== "") {
       query += " WHERE title ILIKE $1";
       params.push(`%${search}%`);
     }
