@@ -12,6 +12,9 @@ const products = require("../controllers/productsController");
 const packing = require("../controllers/packingController");
 const customer = require("../controllers/customersController");
 const driver = require("../controllers/driversController");
+const transporter = require("../controllers/transporterController");
+const buyingCenter = require("../controllers/buyingCenterController");
+const purchaseType = require("../controllers/purchaseTypeController");
 const activities = require("../controllers/activitiesController");
 const deliveryorder = require("../controllers/deliveryorderController");
 const vessel = require("../controllers/vesselController");
@@ -204,6 +207,66 @@ router.post(
   authenticateToken.authenticateToken,
   driver.getOrCreateDriverByID
 );
+
+// -------------------- TRANSPORTER ROUTES --------------------
+router.post(
+  "/createtransporter/v1",
+  authenticateToken.authenticateToken,
+  transporter.createOrUpdateTransporter
+);
+
+router.get(
+  "/transporter/list/v1",
+  authenticateToken.authenticateToken,
+  transporter.getAllTransporters
+);
+
+router.post(
+  "/createorfindtransporter/v1",
+  authenticateToken.authenticateToken,
+  transporter.getOrCreateTransporterByTitle
+);
+
+
+// -------------------- BUYING CENTER ROUTES --------------------
+router.post(
+  "/createbuyingcenter/v1",
+  authenticateToken.authenticateToken,
+  buyingCenter.createOrUpdateBuyingCenter
+);
+
+router.get(
+  "/buyingcenter/list/v1",
+  authenticateToken.authenticateToken,
+  buyingCenter.getAllBuyingCenters
+);
+
+router.post(
+  "/createorfindbuyingcenter/v1",
+  authenticateToken.authenticateToken,
+  buyingCenter.getOrCreateBuyingCenterByTitle
+);
+
+
+// -------------------- PURCHASE TYPE ROUTES --------------------
+router.post(
+  "/createpurchasetype/v1",
+  authenticateToken.authenticateToken,
+  purchaseType.createOrUpdatePurchaseType
+);
+
+router.get(
+  "/purchasetype/list/v1",
+  authenticateToken.authenticateToken,
+  purchaseType.getAllPurchaseTypes
+);
+
+router.post(
+  "/createorfindpurchasetype/v1",
+  authenticateToken.authenticateToken,
+  purchaseType.getOrCreatePurchaseTypeByTitle
+);
+
 
 // Create and update the status of a vessls
 router.post(

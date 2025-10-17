@@ -1,0 +1,26 @@
+-- 1️⃣ Transporter Table
+CREATE TABLE tos_transporter (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  isactive BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2️⃣ Buying Center Table
+CREATE TABLE tos_buying_center (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  isactive BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3️⃣ Purchase Type Table
+CREATE TABLE tos_purchase_type (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  isactive BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
