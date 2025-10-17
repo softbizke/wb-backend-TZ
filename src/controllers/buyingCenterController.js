@@ -27,8 +27,8 @@ const createOrUpdateBuyingCenter = async (req, res) => {
 // Controller to get all buying centers
 const getAllBuyingCenters = async (req, res) => {
   try {
-    const { title } = req.query;
-    const result = await buyingCenterService.getAllBuyingCenters(title);
+    const { search } = req.query;
+    const result = await buyingCenterService.getAllBuyingCenters(search);
 
     res.status(200).json({ success: true, data: result });
   } catch (error) {

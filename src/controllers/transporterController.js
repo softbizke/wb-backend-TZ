@@ -30,8 +30,8 @@ const createOrUpdateTransporter = async (req, res) => {
 // Controller to get all transporters
 const getAllTransporters = async (req, res) => {
   try {
-    const { title } = req.query;
-    const result = await transporterService.getAllTransporters(title);
+    const { search } = req.query;
+    const result = await transporterService.getAllTransporters(search);
 
     res.status(200).json({ success: true, data: result });
   } catch (error) {

@@ -27,8 +27,8 @@ const createOrUpdatePurchaseType = async (req, res) => {
 // Controller to get all purchase types
 const getAllPurchaseTypes = async (req, res) => {
   try {
-    const { title } = req.query;
-    const result = await purchaseTypeService.getAllPurchaseTypes(title);
+    const { search } = req.query;
+    const result = await purchaseTypeService.getAllPurchaseTypes(search);
 
     res.status(200).json({ success: true, data: result });
   } catch (error) {
