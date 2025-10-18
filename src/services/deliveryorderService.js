@@ -788,38 +788,27 @@ const getAllDeliveryorders = async (
     // Base query to retrieve customer types
     let query = `
       select
-        ord.id,
-        ord.order_number,
-        ord.truck_no,
-        ord.trailler_no,
-        ord.measurement,
-        ord.stock_transfer_code,
-        ord.do_no,
-        ord.order_type,
-        ord.isactive,
-        ord.activitycheck,
-        ord.created_at,
-        ord.updated_at,
+        ord.*,
         driv.name AS driver,
         cust.name AS customer,
-        supp.name AS supplier,
-        trans.name AS transporter,
-        buyc.name AS buying_center,
+        supp.name AS supplier_name,
+        trans.title AS transporter_title,
+        buyc.title AS buying_center_title,
         prodty.name AS producttype,
         packty.name AS packingtype,
-        purchtype.name AS purchase_type,
+        purchtype.title AS purchase_type_title,
 
         jsonb_build_object(
           'id', driv.id,
           'name', driv.name,
-          'phone_number', driv.phone_number
-        ) AS driver,
+          'phone_number', driv.license_no
+        ) AS driver_info,
 
         jsonb_build_object(
           'id', cust.id,
           'name', cust.name,
-          'phone_number', cust.phone_number
-        ) AS customer,
+          'bp_code', cust.bp_code
+        ) AS customer_info,
 
         jsonb_build_object(
           'id', supp.id,
@@ -829,19 +818,17 @@ const getAllDeliveryorders = async (
 
         jsonb_build_object(
           'id', trans.id,
-          'name', trans.name,
-          'phone_number', trans.phone_number
+          'title', trans.title
         ) AS transporter,
 
         jsonb_build_object(
           'id', buyc.id,
-          'name', buyc.name,
-          'location', buyc.location
+          'title', buyc.title
         ) AS buying_center,
 
         jsonb_build_object(
           'id', purchtype.id,
-          'name', purchtype.name
+          'title', purchtype.title
         ) AS purchase_type,
 
         jsonb_build_object(
@@ -857,7 +844,7 @@ const getAllDeliveryorders = async (
       FROM tos_delivery_orders ord
       LEFT JOIN tos_drivers driv ON driv.id = ord.driver_id
       LEFT JOIN tos_customer cust ON cust.id = ord.customer_id
-      LEFT JOIN tos_supplier supp ON supp.id = ord.supplier_id
+      LEFT JOIN tos_suppliers supp ON supp.id = ord.supplier_id
       LEFT JOIN tos_transporter trans ON trans.id = ord.transporter_id
       LEFT JOIN tos_buying_center buyc ON buyc.id = ord.buying_center_id
       LEFT JOIN tos_purchase_type purchtype ON purchtype.id = ord.purchase_type_id
@@ -867,7 +854,7 @@ const getAllDeliveryorders = async (
       WHERE ord.isactive = TRUE
         AND (ord.activitycheck != 2 OR ord.activitycheck IS NULL)
         AND ord.created_at >= NOW() - INTERVAL '48 hours'
-      ORDER BY ord.created_at DESC
+      
     `;
     const queryParams = [];
 
@@ -909,7 +896,7 @@ const getAllDeliveryorders = async (
     }
 
     // Append ORDER BY clause
-    query += " ORDER BY ord.id desc ";
+    query += " ORDER BY ord.created_at desc ";
 
     if (limit) {
       queryParams.push(`${limit}`);
