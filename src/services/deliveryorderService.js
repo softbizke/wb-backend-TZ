@@ -34,7 +34,8 @@ const createDeliveryOrder = async (
   purchase_type_id,
   transaction_type,
   source,
-  destination
+  destination,
+  packing_id,
 ) => {
   const client = await pool.connect(); // Get a database client
   try {
@@ -112,7 +113,7 @@ const createDeliveryOrder = async (
       validProductId = productResult.rows[0].id;
     }
 
-    let validPackingId = null;
+    let validPackingTypeId = null;
     if (packing_type_id) {
       const checkPackingQuery =
         "SELECT * FROM tos_packing_type WHERE id = $1 AND isactive = true";
@@ -129,7 +130,7 @@ const createDeliveryOrder = async (
         return { success: false, message: "Packing not found or inactive" };
       }
 
-      validPackingId = packingResult.rows[0].id;
+      validPackingTypeId = packingResult.rows[0].id;
     }
 
     let validWheatTypeId = null;
@@ -221,6 +222,24 @@ const createDeliveryOrder = async (
       validPurchaseTypeId = purchaseTypeResult.rows[0].id;
     }
 
+    // ✅ Validate packing
+    let validPackingId = null;
+    if (packing_id) {
+      const checkPackingQuery =
+        "SELECT * FROM tos_packing WHERE id = $1";
+      const packingResult = await client.query(checkPackingQuery, [
+        packing_id,
+      ]);
+
+      if (packingResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Packing not found or inactive" };
+      }
+
+      validPackingId = packingResult.rows[0].id;
+    }
+
+
 
 
     const insertQuery = `
@@ -277,7 +296,7 @@ const createDeliveryOrder = async (
       driverId || null,
       measurement || 0,
       validProductId,
-      validPackingId,
+      validPackingTypeId,
       vesselId,
       do_no,
       activity_check,
@@ -312,11 +331,12 @@ const createDeliveryOrder = async (
         source,
         destination,
         transaction_type,
+        packing_id,
         isactive,
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     for (const order of order_items) {
@@ -342,6 +362,7 @@ const createDeliveryOrder = async (
           source,
           destination,
           transaction_type,
+          packing_id,
         ]);
       } else {
         // Product is already an ID
@@ -355,6 +376,7 @@ const createDeliveryOrder = async (
           source,
           destination,
           transaction_type,
+          packing_id,
         ]);
       }
     }

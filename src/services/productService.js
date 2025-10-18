@@ -144,28 +144,42 @@ const getAllProductTypes = async (search) => {
 // Function to retrieve all product with optional search functionality
 const getAllProducts = async (search) => {
   try {
-    // Base query to retrieve customer types
-    let query =
-      "SELECT prod.id,prod.name, prod.isactive, typ.name as producttype FROM tos_product prod left join tos_product_type typ on typ.id = prod.product_type_id";
+    let query = `
+      SELECT 
+        prod.id,
+        prod.name,
+        prod.isactive,
+        typ.id AS product_type_id,
+        typ.name AS product_type_name,
+        pack.id AS packing_type_id,
+        pack.name AS packing_type_name
+      FROM tos_product prod
+      LEFT JOIN tos_product_type typ 
+        ON typ.id = prod.product_type_id
+      LEFT JOIN tos_packing_type pack 
+        ON pack.id = typ.packing_type_id
+    `;
+
     const queryParams = [];
 
-    // Add a WHERE clause if search parameter is provided
+    // Add WHERE clause for search
     if (search) {
-      query += " WHERE prod.name ILIKE $1";
+      query += " WHERE prod.name ILIKE $1 OR typ.name ILIKE $1 OR pack.name ILIKE $1";
       queryParams.push(`%${search}%`);
     }
 
-    // Append ORDER BY clause
-    query += " ORDER BY name ASC";
+    // Order results
+    query += " ORDER BY prod.name ASC";
 
-    // Execute the query with parameters
+    // Execute query
     const result = await pool.query(query, queryParams);
     return result.rows;
   } catch (error) {
-    console.error("Error retrieving customer types:", error);
+    console.error("Error retrieving products:", error);
     throw new Error("Server error");
   }
 };
+
 
 const getOrCreateProductByCode = async (data) => {
   try {

@@ -462,6 +462,15 @@ const createOrUpdateActivityV2 = async (data, user) => {
     status,
     order_type,
     order_items,
+    transporter_id,
+    buying_center_id,
+    supplier_id,
+    purchase_type_id,
+    transaction_type,
+    source,
+    destination,
+    packing_id,
+
   } = data;
   let activity_type_name;
   let qty;
@@ -491,7 +500,15 @@ const createOrUpdateActivityV2 = async (data, user) => {
         wheat_type_id,
         stock_transfer_code,
         order_type,
-        order_items
+        order_items,
+        transporter_id,
+        buying_center_id,
+        supplier_id,
+        purchase_type_id,
+        transaction_type,
+        source,
+        destination,
+        packing_id,
       );
 
       if (!orderResult.success) {
@@ -668,6 +685,14 @@ const createOrUpdateActivityV2 = async (data, user) => {
         wheat_type_id,
         stock_transfer_code,
         order_type,
+        transporter_id,
+        buying_center_id,
+        supplier_id,
+        purchase_type_id,
+        transaction_type,
+        source,
+        destination,
+        packing_id,
       };
 
       const setClauses = [];

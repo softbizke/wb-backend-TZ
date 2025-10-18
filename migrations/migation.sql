@@ -46,7 +46,7 @@ ADD COLUMN buying_center_id BIGINT,
 ADD COLUMN supplier_id BIGINT,
 ADD COLUMN purchase_type_id BIGINT,
 
--- Add foreign key constraints
+-- Add foreign key constrain`ts
 ADD CONSTRAINT fk_delivery_orders_transporter
     FOREIGN KEY (transporter_id)
     REFERENCES tos_transporter(id)
@@ -68,7 +68,16 @@ ADD CONSTRAINT fk_delivery_orders_purchase_type
     ON DELETE SET NULL;
 
 
+
 ALTER TABLE tos_finished_orders
 ADD COLUMN source VARCHAR(255),
 ADD COLUMN destination VARCHAR(255),
-ADD COLUMN transaction_type VARCHAR(100);
+ADD COLUMN transaction_type VARCHAR(100),
+ADD COLUMN packing_id BIGINT,
+
+ADD CONSTRAINT fk_delivery_orders_packing
+    FOREIGN KEY (packing_id)
+    REFERENCES tos_packing(id)
+    ON DELETE SET NULL;
+
+
