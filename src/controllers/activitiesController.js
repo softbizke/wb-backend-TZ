@@ -242,6 +242,7 @@ const getAllActivities = async (req, res) => {
       truck,
       order_no
     );
+    
 
     res.status(200).json({
       success: true,

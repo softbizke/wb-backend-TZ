@@ -26,9 +26,15 @@ const createDeliveryOrder = async (
   do_no,
   activity_check = 0,
   wheat_type_id,
-  stock_transfer_code = null,
   order_type = null,
-  order_items = []
+  order_items = [],
+  transporter_id,
+  buying_center_id,
+  supplier_id,
+  purchase_type_id,
+  transaction_type,
+  source,
+  destination
 ) => {
   const client = await pool.connect(); // Get a database client
   try {
@@ -146,31 +152,144 @@ const createDeliveryOrder = async (
       validWheatTypeId = wheatTypeResult.rows[0].id;
     }
 
+    let validTransporterId = null;
+    if (transporter_id) {
+      const checkTransporterQuery =
+        "SELECT * FROM tos_transporter WHERE id = $1 AND isactive = true";
+      const transporterResult = await client.query(checkTransporterQuery, [
+        transporter_id,
+      ]);
+
+      if (transporterResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Transporter not found or inactive" };
+      }
+      if (transporterResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Transporter not found or inactive" };
+      }
+
+      validTransporterId = transporterResult.rows[0].id;
+    }
+
+    // ✅ Validate Buying Center
+    let validBuyingCenterId = null;
+    if (buying_center_id) {
+      const checkBuyingCenterQuery =
+        "SELECT * FROM tos_buying_center WHERE id = $1 AND isactive = true";
+      const buyingCenterResult = await client.query(checkBuyingCenterQuery, [
+        buying_center_id,
+      ]);
+
+      if (buyingCenterResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Buying center not found or inactive" };
+      }
+
+      validBuyingCenterId = buyingCenterResult.rows[0].id;
+    }
+
+    // ✅ Validate Supplier
+    let validSupplierId = null;
+    if (supplier_id) {
+      const checkSupplierQuery =
+        "SELECT * FROM tos_suppliers WHERE id = $1 AND isactive = true";
+      const supplierResult = await client.query(checkSupplierQuery, [supplier_id]);
+
+      if (supplierResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Supplier not found or inactive" };
+      }
+
+      validSupplierId = supplierResult.rows[0].id;
+    }
+
+    // ✅ Validate Purchase Type
+    let validPurchaseTypeId = null;
+    if (purchase_type_id) {
+      const checkPurchaseTypeQuery =
+        "SELECT * FROM tos_purchase_type WHERE id = $1";
+      const purchaseTypeResult = await client.query(checkPurchaseTypeQuery, [
+        purchase_type_id,
+      ]);
+
+      if (purchaseTypeResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Purchase type not found" };
+      }
+
+      validPurchaseTypeId = purchaseTypeResult.rows[0].id;
+    }
+
+
+
     const insertQuery = `
       INSERT INTO tos_delivery_orders 
-      (order_number, truck_no, trailler_no, customer_id, driver_id, measurement, product_type_id, packing_type_id, vessel_id, do_no, activitycheck, isactive, wheat_type_id, old_truck_no, stock_transfer_code, order_type)
+      (
+        order_number,
+        truck_no,
+        trailler_no,
+        customer_id,
+        driver_id,
+        measurement,
+        product_type_id,
+        packing_type_id,
+        vessel_id,
+        do_no,
+        activitycheck,
+        isactive,
+        wheat_type_id,
+        old_truck_no,
+        order_type,
+        transporter_id,
+        buying_center_id,
+        supplier_id,
+        purchase_type_id
+      )
       VALUES (
         CONCAT(TO_CHAR(CURRENT_DATE, 'YYYYMMDD'), LPAD(nextval('delivery_order_seq')::text, 4, '0')),
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, $12, $13, $14
-      ) 
+        $1,  -- truck_no
+        $2,  -- trailler_no
+        $3,  -- customer_id
+        $4,  -- driver_id
+        $5,  -- measurement
+        $6,  -- product_type_id
+        $7,  -- packing_type_id
+        $8,  -- vessel_id
+        $9,  -- do_no
+        $10, -- activitycheck
+        true,
+        $11, -- wheat_type_id
+        $12, -- old_truck_no
+        $13, -- order_type
+        $14, -- transporter_id
+        $15, -- buying_center_id
+        $16, -- supplier_id
+        $17  -- purchase_type_id
+      )
       RETURNING order_number;
     `;
+
     const result = await client.query(insertQuery, [
       truckNoUpperCase,
       traillerNoUpperCase,
       customerId,
-      driverId, // Insert NULL if driverId is not provided
-      measurement || 0, // Insert zero if measurement is not provided
+      driverId || null,
+      measurement || 0,
       validProductId,
       validPackingId,
       vesselId,
       do_no,
       activity_check,
       validWheatTypeId,
-      old_truck_no ? old_truck_no.toUpperCase().trim() : null, // Insert NULL if old_truck_no is not provided
-      stock_transfer_code,
+      old_truck_no ? old_truck_no.toUpperCase().trim() : null,
       order_type,
+      validTransporterId,
+      validBuyingCenterId,
+      validSupplierId,
+      validPurchaseTypeId,
     ]);
+
 
     const orderNumber = result.rows[0].order_number;
 
@@ -180,14 +299,30 @@ const createDeliveryOrder = async (
     const order_id = orderDetails.rows[0].id;
 
     let sku = null;
+
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
-      (delivery_order_id, sku,product_id, packing_type_id, unit, measurement, isactive, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6,'true', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      (
+        delivery_order_id,
+        sku,
+        product_id,
+        packing_type_id,
+        unit,
+        measurement,
+        source,
+        destination,
+        transaction_type,
+        isactive,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     for (const order of order_items) {
+
       if (typeof order.product === "string") {
+        // Product is a string → find or create it
         const payload = {
           name: order.product_name,
           item_code: order.product,
@@ -196,15 +331,20 @@ const createDeliveryOrder = async (
         };
         const productId = await getOrCreateProductByCode(payload);
         console.log("P ID", productId);
+
         await client.query(insertFinishedOrdersQuery, [
           order_id,
           sku,
           productId,
-          1,
+          1, // Default packing type
           order.unit,
           order.quantity,
+          source,
+          destination,
+          transaction_type,
         ]);
       } else {
+        // Product is already an ID
         await client.query(insertFinishedOrdersQuery, [
           order_id,
           sku,
@@ -212,9 +352,13 @@ const createDeliveryOrder = async (
           order.packing_type,
           order.unit,
           order.quantity,
+          source,
+          destination,
+          transaction_type,
         ]);
       }
     }
+
 
     await client.query("COMMIT"); // Commit the transaction
 
@@ -272,91 +416,89 @@ const updateDeliveryOrder = async (order_number, isactive) => {
 };
 
 const createDeliveryAndFinishedOrder = async (
-  order_id,
   truck_no,
   trailler_no,
   customer_name,
-  driver_id, // Optional
+  driver_id,
   measurement,
-  product_type_id, // Optional
+  product_type_id,
   packing_type_id,
+  transporter_id,
+  buying_center_id,
+  supplier_id,
+  purchase_type_id,
   order_items
 ) => {
-  const client = await pool.connect(); // Get a database client
+  const client = await pool.connect();
   try {
-    await client.query("BEGIN"); // Start a transaction
+    await client.query("BEGIN");
 
-    // Step 1: Check if the customer exists
-    const checkCustomerQuery =
-      "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true";
-    const customerResult = await client.query(checkCustomerQuery, [
-      customer_name,
-    ]);
+    // ✅ Validate customer
+    const customerRes = await client.query(
+      "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true",
+      [customer_name]
+    );
+    if (customerRes.rows.length === 0)
+      throw new Error("Customer not found or inactive");
+    const customerId = customerRes.rows[0].id;
 
-    if (customerResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return { success: false, message: "Customer not found or inactive" };
-    }
-
-    const customerId = customerResult.rows[0].id;
-
-    // Step 2: Check if the driver exists, if provided
+    // ✅ Validate driver
     let validDriverId = null;
     if (driver_id) {
-      const checkDriverQuery =
-        "SELECT * FROM tos_drivers WHERE id = $1 AND isactive = true";
-      const driverResult = await client.query(checkDriverQuery, [driver_id]);
-
-      if (driverResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Driver not found or inactive" };
-      }
-
-      validDriverId = driverResult.rows[0].id; // Set validDriverId if driver exists
+      const driverRes = await client.query(
+        "SELECT * FROM tos_drivers WHERE id = $1 AND isactive = true",
+        [driver_id]
+      );
+      if (driverRes.rows.length === 0)
+        throw new Error("Driver not found or inactive");
+      validDriverId = driverRes.rows[0].id;
     }
 
-    // Step 3: Check if the product exists, if provided
+    // ✅ Validate product type
     let validProductId = null;
     if (product_type_id) {
-      const checkProductQuery =
-        "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true";
-      const productResult = await client.query(checkProductQuery, [
-        product_type_id,
-      ]);
-
-      if (productResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Product not found or inactive" };
-      }
-
-      validProductId = productResult.rows[0].id;
+      const productRes = await client.query(
+        "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true",
+        [product_type_id]
+      );
+      if (productRes.rows.length === 0)
+        throw new Error("Product not found or inactive");
+      validProductId = productRes.rows[0].id;
     }
 
-    // Step 4: Check if the packing exists
-    const checkPackingQuery =
-      "SELECT * FROM tos_packing_type WHERE id = $1 AND isactive = true";
-    const packingResult = await client.query(checkPackingQuery, [
-      packing_type_id,
-    ]);
+    // ✅ Validate packing type
+    const packRes = await client.query(
+      "SELECT * FROM tos_packing_type WHERE id = $1 AND isactive = true",
+      [packing_type_id]
+    );
+    if (packRes.rows.length === 0)
+      throw new Error("Packing type not found or inactive");
+    const validPackingId = packRes.rows[0].id;
 
-    if (packingResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return { success: false, message: "Packing not found or inactive" };
-    }
+    // ✅ Validate linked entities
+    const validateActive = async (table, id, name) => {
+      if (!id) return null;
+      const res = await client.query(`SELECT * FROM ${table} WHERE id = $1 AND isactive = true`, [id]);
+      if (res.rows.length === 0) throw new Error(`${name} not found or inactive`);
+      return res.rows[0].id;
+    };
 
-    const validPackingId = packingResult.rows[0].id;
+    const validTransporterId = await validateActive("tos_transporter", transporter_id, "Transporter");
+    const validBuyingCenterId = await validateActive("tos_buying_center", buying_center_id, "Buying center");
+    const validSupplierId = await validateActive("tos_supplier", supplier_id, "Supplier");
+    const validPurchaseTypeId = await validateActive("tos_purchase_type", purchase_type_id, "Purchase type");
 
-    // Step 5: Insert the new delivery order
+    // ✅ Insert new delivery order
     const insertDeliveryOrderQuery = `
       INSERT INTO tos_delivery_orders
-      (order_number, truck_no, trailler_no, customer_id, driver_id, measurement, product_type_id, packing_type_id, isactive)
+      (order_number, truck_no, trailler_no, customer_id, driver_id, measurement, product_type_id, packing_type_id, transporter_id, buying_center_id, supplier_id, purchase_type_id, isactive)
       VALUES (
         CONCAT(TO_CHAR(CURRENT_DATE, 'YYYYMMDD'), LPAD(nextval('delivery_order_seq')::text, 4, '0')),
-        $1, $2, $3, $4, $5, $6, $7, true
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true
       )
       RETURNING id;
     `;
-    const deliveryOrderResult = await client.query(insertDeliveryOrderQuery, [
+    const deliveryRes = await client.query(insertDeliveryOrderQuery, [
       truck_no,
       trailler_no,
       customerId,
@@ -364,18 +506,27 @@ const createDeliveryAndFinishedOrder = async (
       measurement,
       validProductId,
       validPackingId,
+      validTransporterId,
+      validBuyingCenterId,
+      validSupplierId,
+      validPurchaseTypeId,
     ]);
 
-    const deliveryOrderId = deliveryOrderResult.rows[0].id;
+    const deliveryOrderId = deliveryRes.rows[0].id;
     let sku = null;
-    // Step 6: Insert finished orders
+
+    // ✅ Insert finished orders
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
-      (delivery_order_id, sku,product_id, packing_type_id, unit, measurement, isactive, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6,'true', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, isactive, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
     `;
 
     for (const order of order_items) {
+      const sourceVal = order.source || null;
+      const destinationVal = order.destination || null;
+      const transactionTypeVal = order.transaction_type || null;
+
       if (typeof order.product === "string") {
         const payload = {
           name: order.product_name,
@@ -384,71 +535,79 @@ const createDeliveryAndFinishedOrder = async (
           product_type_id: 1,
         };
         const productId = await getOrCreateProductByCode(payload);
-        console.log("P ID", productId);
         await client.query(insertFinishedOrdersQuery, [
-          order_id,
+          deliveryOrderId,
           sku,
           productId,
           1,
           order.unit,
           order.quantity,
+          sourceVal,
+          destinationVal,
+          transactionTypeVal,
         ]);
       } else {
         await client.query(insertFinishedOrdersQuery, [
-          order_id,
+          deliveryOrderId,
           sku,
           order.product,
           order.packing_type,
           order.unit,
           order.quantity,
+          sourceVal,
+          destinationVal,
+          transactionTypeVal,
         ]);
       }
     }
 
-    await client.query("COMMIT"); // Commit the transaction
-
+    await client.query("COMMIT");
     return {
       success: true,
       message: "Delivery order and finished orders created successfully",
       delivery_order_id: deliveryOrderId,
     };
   } catch (error) {
-    await client.query("ROLLBACK"); // Roll back the transaction in case of error
+    await client.query("ROLLBACK");
     console.error("Error creating delivery order and finished orders:", error);
-    throw new Error("Server error");
+    return { success: false, message: error.message };
   } finally {
-    client.release(); // Release the database client
+    client.release();
   }
 };
+
+
+
 const createDeliveryAndFinishedOrderV2 = async (
   order_id,
   truck_no,
   trailler_no,
   customer_name,
-  stock_transfer_code,
-  driver_id, // Optional
+  driver_id,
   measurement,
-  product_type_id, // Optional
+  product_type_id,
   packing_type_id,
+  transporter_id,
+  buying_center_id,
+  supplier_id,
+  purchase_type_id,
   order_items
 ) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    let customerId = null;
-    if (customer_name) {
-      const checkCustomerQuery =
-        "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true";
-      const customerResult = await client.query(checkCustomerQuery, [
-        customer_name,
-      ]);
-      if (customerResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Customer not found or inactive" };
-      }
-      customerId = customerResult.rows[0].id;
-    }
 
+    // ✅ Validate customer
+    const checkCustomerQuery =
+      "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true";
+    const customerResult = await client.query(checkCustomerQuery, [customer_name]);
+    if (customerResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { success: false, message: "Customer not found or inactive" };
+    }
+    const customerId = customerResult.rows[0].id;
+
+    // ✅ Validate driver
     let validDriverId = null;
     if (driver_id) {
       const checkDriverQuery =
@@ -461,13 +620,12 @@ const createDeliveryAndFinishedOrderV2 = async (
       validDriverId = driverResult.rows[0].id;
     }
 
+    // ✅ Validate product
     let validProductId = null;
     if (product_type_id) {
       const checkProductQuery =
         "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true";
-      const productResult = await client.query(checkProductQuery, [
-        product_type_id,
-      ]);
+      const productResult = await client.query(checkProductQuery, [product_type_id]);
       if (productResult.rows.length === 0) {
         await client.query("ROLLBACK");
         return { success: false, message: "Product not found or inactive" };
@@ -475,18 +633,33 @@ const createDeliveryAndFinishedOrderV2 = async (
       validProductId = productResult.rows[0].id;
     }
 
+    // ✅ Validate packing type
     const checkPackingQuery =
       "SELECT * FROM tos_packing_type WHERE id = $1 AND isactive = true";
-    const packingResult = await client.query(checkPackingQuery, [
-      packing_type_id,
-    ]);
+    const packingResult = await client.query(checkPackingQuery, [packing_type_id]);
     if (packingResult.rows.length === 0) {
       await client.query("ROLLBACK");
       return { success: false, message: "Packing not found or inactive" };
     }
     const validPackingId = packingResult.rows[0].id;
 
-    // Step 5: Update the existing delivery order
+    // ✅ Validate transporter, buying center, supplier, and purchase type
+    const validateActive = async (table, id, fieldName) => {
+      if (!id) return null;
+      const res = await client.query(`SELECT * FROM ${table} WHERE id = $1 AND isactive = true`, [id]);
+      if (res.rows.length === 0) {
+        await client.query("ROLLBACK");
+        throw new Error(`${fieldName} not found or inactive`);
+      }
+      return res.rows[0].id;
+    };
+
+    const validTransporterId = await validateActive("tos_transporter", transporter_id, "Transporter");
+    const validBuyingCenterId = await validateActive("tos_buying_center", buying_center_id, "Buying center");
+    const validSupplierId = await validateActive("tos_suppliers", supplier_id, "Supplier");
+    const validPurchaseTypeId = await validateActive("tos_purchase_type", purchase_type_id, "Purchase type");
+
+    // ✅ Update the existing delivery order
     const updateDeliveryOrderQuery = `
       UPDATE tos_delivery_orders
       SET truck_no = $1,
@@ -495,8 +668,11 @@ const createDeliveryAndFinishedOrderV2 = async (
           driver_id = $4,
           product_type_id = $5,
           packing_type_id = $6,
-          stock_transfer_code = $7
-      WHERE id = $8 AND isactive = true
+          transporter_id = $7,
+          buying_center_id = $8,
+          supplier_id = $9,
+          purchase_type_id = $10
+      WHERE id = $11 AND isactive = true
     `;
     await client.query(updateDeliveryOrderQuery, [
       truck_no,
@@ -505,34 +681,27 @@ const createDeliveryAndFinishedOrderV2 = async (
       validDriverId,
       validProductId,
       validPackingId,
-      stock_transfer_code,
+      validTransporterId,
+      validBuyingCenterId,
+      validSupplierId,
+      validPurchaseTypeId,
       order_id,
     ]);
 
-    // Step 6: Insert finished orders
+    // ✅ Insert finished orders
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
-      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, isactive, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, 'true', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, isactive, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     const sku = null;
     for (const order of order_items) {
+      const sourceVal = order.source || null;
+      const destinationVal = order.destination || null;
+      const transactionTypeVal = order.transaction_type || null;
+
       if (typeof order.product === "string") {
-        //get packing type name is like product.packing_type
-        const checkPackingTypeQuery =
-          "SELECT * FROM tos_packing_type WHERE name ILIKE $1 AND isactive = true";
-        const packingTypeResult = await client.query(checkPackingTypeQuery, [
-          order.packing_type,
-        ]);
-        if (packingTypeResult.rows.length === 0) {
-          await client.query("ROLLBACK");
-          return {
-            success: false,
-            message: "Packing type not found or inactive",
-          };
-        }
-        const packingTypeId = packingTypeResult.rows[0].id;
         const payload = {
           name: order.product_name,
           item_code: order.product,
@@ -544,9 +713,12 @@ const createDeliveryAndFinishedOrderV2 = async (
           order_id,
           sku,
           productId,
-          packingTypeId,
+          1,
           order.unit,
           order.quantity,
+          sourceVal,
+          destinationVal,
+          transactionTypeVal,
         ]);
       } else {
         await client.query(insertFinishedOrdersQuery, [
@@ -556,6 +728,9 @@ const createDeliveryAndFinishedOrderV2 = async (
           order.packing_type,
           order.unit,
           order.quantity,
+          sourceVal,
+          destinationVal,
+          transactionTypeVal,
         ]);
       }
     }
@@ -563,21 +738,18 @@ const createDeliveryAndFinishedOrderV2 = async (
     await client.query("COMMIT");
     return {
       success: true,
-      message:
-        "Delivery order updated and finished orders created successfully",
+      message: "Delivery order updated and finished orders created successfully",
       delivery_order_id: order_id,
     };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error(
-      "Error updating delivery order and inserting finished orders:",
-      error
-    );
-    throw new Error("Server error");
+    console.error("Error updating delivery order and inserting finished orders:", error);
+    return { success: false, message: error.message };
   } finally {
     client.release();
   }
 };
+
 
 // Function to retrieve all customer types with optional search functionality
 const getAllDeliveryorders = async (
@@ -593,26 +765,88 @@ const getAllDeliveryorders = async (
   try {
     // Base query to retrieve customer types
     let query = `
-    select
-      ord.id,
-      ord.order_number,
-      ord.truck_no,
-      ord.trailler_no,
-      ord.measurement,
-      driv.name as driver,
-      cust.name as customer,
-      ord.isactive,ord.activitycheck,
-      prodty.name as producttype,
-      packty.name as packingtype,
-      ord.do_no,
-      ord.order_type,
-      ord.created_at
-    from tos_delivery_orders ord
-    left join tos_drivers driv on driv.id = ord.driver_id
-    left join tos_customer cust on cust.id = ord.customer_id
-    left join tos_product_type prodty on prodty.id = ord.product_type_id
-    left join tos_packing_type packty on packty.id = ord.packing_type_id
-    WHERE ord.isactive = 'true' AND (ord.activitycheck != 2 OR ord.activitycheck IS NULL) AND ord.created_at >= NOW() - INTERVAL '48 hours'`;
+      select
+        ord.id,
+        ord.order_number,
+        ord.truck_no,
+        ord.trailler_no,
+        ord.measurement,
+        ord.stock_transfer_code,
+        ord.do_no,
+        ord.order_type,
+        ord.isactive,
+        ord.activitycheck,
+        ord.created_at,
+        ord.updated_at,
+        driv.name AS driver,
+        cust.name AS customer,
+        supp.name AS supplier,
+        trans.name AS transporter,
+        buyc.name AS buying_center,
+        prodty.name AS producttype,
+        packty.name AS packingtype,
+        purchtype.name AS purchase_type,
+
+        jsonb_build_object(
+          'id', driv.id,
+          'name', driv.name,
+          'phone_number', driv.phone_number
+        ) AS driver,
+
+        jsonb_build_object(
+          'id', cust.id,
+          'name', cust.name,
+          'phone_number', cust.phone_number
+        ) AS customer,
+
+        jsonb_build_object(
+          'id', supp.id,
+          'name', supp.name,
+          'phone_number', supp.phone_number
+        ) AS supplier,
+
+        jsonb_build_object(
+          'id', trans.id,
+          'name', trans.name,
+          'phone_number', trans.phone_number
+        ) AS transporter,
+
+        jsonb_build_object(
+          'id', buyc.id,
+          'name', buyc.name,
+          'location', buyc.location
+        ) AS buying_center,
+
+        jsonb_build_object(
+          'id', purchtype.id,
+          'name', purchtype.name
+        ) AS purchase_type,
+
+        jsonb_build_object(
+          'id', prodty.id,
+          'name', prodty.name
+        ) AS product_type,
+
+        jsonb_build_object(
+          'id', packty.id,
+          'name', packty.name
+        ) AS packing_type
+
+      FROM tos_delivery_orders ord
+      LEFT JOIN tos_drivers driv ON driv.id = ord.driver_id
+      LEFT JOIN tos_customer cust ON cust.id = ord.customer_id
+      LEFT JOIN tos_supplier supp ON supp.id = ord.supplier_id
+      LEFT JOIN tos_transporter trans ON trans.id = ord.transporter_id
+      LEFT JOIN tos_buying_center buyc ON buyc.id = ord.buying_center_id
+      LEFT JOIN tos_purchase_type purchtype ON purchtype.id = ord.purchase_type_id
+      LEFT JOIN tos_product_type prodty ON prodty.id = ord.product_type_id
+      LEFT JOIN tos_packing_type packty ON packty.id = ord.packing_type_id
+
+      WHERE ord.isactive = TRUE
+        AND (ord.activitycheck != 2 OR ord.activitycheck IS NULL)
+        AND ord.created_at >= NOW() - INTERVAL '48 hours'
+      ORDER BY ord.created_at DESC
+    `;
     const queryParams = [];
 
     // Add a WHERE clause if search parameter is provided

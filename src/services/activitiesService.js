@@ -188,7 +188,7 @@ const createOrUpdateActivity = async (
   product_type_id,
   packing_type_id,
   vessel_id,
-  do_no
+  do_no,
 ) => {
   let activity_type_name;
   let qty;
@@ -210,7 +210,7 @@ const createOrUpdateActivity = async (
         packing_type_id,
         vessel_id,
         do_no,
-        activity_check
+        activity_check,
       );
 
       if (!orderResult.success) {
@@ -1076,94 +1076,189 @@ const getAllActivities = async (search, order_no) => {
 const getAllActivitiesV2 = async (search, order_no) => {
   try {
     let query = `
-  SELECT 
-    ord.id AS delivery_order_id,
-    ord.order_number, 
-    ord.trailler_no,
-    ord.vessel_id,
-    ord.product_type_id,
-    ord.old_truck_no,
-    ord.isactive,
-    ord.do_no,
-    ord.order_type,
-    ord.stock_transfer_code,
+      SELECT 
+        ord.id AS delivery_order_id,
+        ord.order_number, 
+        ord.truck_no,
+        ord.trailler_no,
+        ord.vessel_id,
+        ord.product_type_id,
+        ord.old_truck_no,
+        ord.isactive,
+        ord.do_no,
+        ord.order_type,
 
-    cust.name AS customer_name,
-    drv.name AS driver_name,
-    drv.license_no AS driver_phone,
+        ord.driver_id,
+        ord.customer_id,
+        ord.supplier_id,
+        ord.transporter_id,
+        ord.buying_center_id,
+        ord.purchase_type_id,
 
-    sw_ap.name AS sw_wb,
-    fw_ap.name AS fw_wb,
+        ord.created_at,
+        ord.updated_at,
 
-    COALESCE(
+        -- 🚛 Driver
+        jsonb_build_object(
+          'id', drv.id,
+          'name', drv.name,
+          'license_no', drv.license_no,
+          'phone', drv.phone
+        ) AS driver,
+
+        -- 👥 Customer
+        jsonb_build_object(
+          'id', cust.id,
+          'name', cust.name,
+          'phone_number', cust.phone_number
+        ) AS customer,
+
+        -- 🏢 Supplier
+        jsonb_build_object(
+          'id', supp.id,
+          'name', supp.name,
+          'phone_number', supp.phone_number
+        ) AS supplier,
+
+        -- 🚚 Transporter
+        jsonb_build_object(
+          'id', trans.id,
+          'name', trans.name,
+          'phone_number', trans.phone_number
+        ) AS transporter,
+
+        -- 🏬 Buying Center
+        jsonb_build_object(
+          'id', bc.id,
+          'name', bc.name,
+          'location', bc.location
+        ) AS buying_center,
+
+        -- 💰 Purchase Type
+        jsonb_build_object(
+          'id', pt.id,
+          'name', pt.name
+        ) AS purchase_type,
+
+        -- ⚖️ Product Type and Packing Type
+        jsonb_build_object(
+          'id', prodty.id,
+          'name', prodty.name
+        ) AS product_type,
+
+        jsonb_build_object(
+          'id', packty.id,
+          'name', packty.name
+        ) AS packing_type,
+
+        -- 🧱 Products JSON array
+        COALESCE(
           json_agg(
             jsonb_build_object(
               'quantity', f_ord.measurement, 
               'name', prod.name,
-              'unit', f_ord.unit
+              'unit', f_ord.unit,
+              'transaction_type', f_ord.transaction_type,
+              'source', f_ord.source,
+              'destination', f_ord.destination
             )
-          ) FILTER (WHERE ord.product_type_id IS NULL),
+          ) FILTER (WHERE f_ord.id IS NOT NULL),
           '[]'::json
         ) AS products,
 
+        -- 🧾 Weighbridge + Activity (10)
+        sw_ap.name AS sw_wb,
+        fw_ap.name AS fw_wb,
+        act10.truck_no AS truck_no_10,
+        act10.images,
+        act10.tare_weight,
+        act10.gross_weight AS gross_weight, 
+        act10.qty AS net_weight,
+        act10.id AS activity10_id,
+        act10.created_at AS created10_at,
+        act10.sw_at AS sw10_at,
+        act10.fw_by AS fw10_by,
+        act10.sw_by AS sw10_by,
+        act10.avrg_w AS avrg_w,
+        act10.reason AS reason,
+        act10.sw_truck_no AS sw_truck_no,
 
-    act10.truck_no AS truck_no,
-    act10.images,
-    act10.tare_weight,
-    act10.gross_weight AS gross_weight, 
-    act10.qty AS net_weight,
-    act10.id AS activity10_id,
-    act10.delivery_order_id AS order10_id,
-    act10.created_at as created10_at,
-    act10.sw_at as sw10_at,
-    act10.fw_by as fw10_by,
-    act10.sw_by as sw10_by,
-    act10.avrg_w AS avrg_w,
-    act10.reason AS reason,
-    act10.sw_truck_no AS sw_truck_no,
-    CONCAT(fw10_user.first_name, ' ', fw10_user.last_name) AS fw10_name,
-    fw10_user.phone AS fw10_phone,
-    CONCAT(sw10_user.first_name, ' ', sw10_user.last_name) AS sw10_name,
-    sw10_user.phone AS sw10_phone,
+        -- 🧍 Users for Activity 10
+        jsonb_build_object(
+          'id', fw10_user.id,
+          'name', CONCAT(fw10_user.first_name, ' ', fw10_user.last_name),
+          'phone', fw10_user.phone
+        ) AS fw10_user,
 
-    act20.gross_weight AS gross_weight_20, 
-    act20.qty AS net_weight_20,
-    act20.delivery_order_id AS order20_id,
-    act20.created_at as created20_at,
-    act20.id AS activity20_id,
-    act20.sw_at as sw20_at,
-    act20.fw_by as fw20_by,
-    act20.sw_by as sw20_by,
-    act20.avrg_w AS avrg_w_20,
-    CONCAT(fw20_user.first_name, ' ', fw20_user.last_name) AS fw20_name,
-    fw20_user.phone AS fw20_phone,
-    CONCAT(sw20_user.first_name, ' ', sw20_user.last_name) AS sw20_name,
-    sw20_user.phone AS sw20_phone
+        jsonb_build_object(
+          'id', sw10_user.id,
+          'name', CONCAT(sw10_user.first_name, ' ', sw10_user.last_name),
+          'phone', sw10_user.phone
+        ) AS sw10_user,
 
-  FROM tos_delivery_orders ord
-  LEFT JOIN tos_activities act10 
-      ON ord.id = act10.delivery_order_id AND act10.activity_type = 10
-  LEFT JOIN tos_activities act20 
-      ON ord.id = act20.delivery_order_id AND act20.activity_type = 20
+        -- ⚖️ Activity 20
+        act20.gross_weight AS gross_weight_20, 
+        act20.qty AS net_weight_20,
+        act20.created_at AS created20_at,
+        act20.id AS activity20_id,
+        act20.sw_at AS sw20_at,
+        act20.fw_by AS fw20_by,
+        act20.sw_by AS sw20_by,
+        act20.avrg_w AS avrg_w_20,
 
-  LEFT JOIN tos_users fw10_user ON fw10_user.id = act10.fw_by
-  LEFT JOIN tos_users sw10_user ON sw10_user.id = act10.sw_by
-  LEFT JOIN tos_users fw20_user ON fw20_user.id = act20.fw_by
-  LEFT JOIN tos_users sw20_user ON sw20_user.id = act20.sw_by
-  
-  LEFT JOIN tos_activity_points sw_ap ON sw_ap.id = act10.sw_wb
-  LEFT JOIN tos_activity_points fw_ap ON fw_ap.id = act10.fw_wb
+        -- 🧍 Users for Activity 20
+        jsonb_build_object(
+          'id', fw20_user.id,
+          'name', CONCAT(fw20_user.first_name, ' ', fw20_user.last_name),
+          'phone', fw20_user.phone
+        ) AS fw20_user,
 
-  LEFT JOIN tos_activity_points sw20_ap ON sw20_ap.id = act20.sw_wb
-  LEFT JOIN tos_activity_points fw20_ap ON fw20_ap.id = act10.sw_wb
+        jsonb_build_object(
+          'id', sw20_user.id,
+          'name', CONCAT(sw20_user.first_name, ' ', sw20_user.last_name),
+          'phone', sw20_user.phone
+        ) AS sw20_user
 
-  LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
-  LEFT JOIN tos_drivers drv ON ord.driver_id = drv.id
+      FROM tos_delivery_orders ord
 
-  LEFT JOIN tos_finished_orders f_ord ON f_ord.delivery_order_id = ord.id
-  LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
+      -- Activities
+      LEFT JOIN tos_activities act10 
+        ON ord.id = act10.delivery_order_id AND act10.activity_type = 10
+      LEFT JOIN tos_activities act20 
+        ON ord.id = act20.delivery_order_id AND act20.activity_type = 20
 
-`;
+      -- Users
+      LEFT JOIN tos_users fw10_user ON fw10_user.id = act10.fw_by
+      LEFT JOIN tos_users sw10_user ON sw10_user.id = act10.sw_by
+      LEFT JOIN tos_users fw20_user ON fw20_user.id = act20.fw_by
+      LEFT JOIN tos_users sw20_user ON sw20_user.id = act20.sw_by
+
+      -- Activity Points
+      LEFT JOIN tos_activity_points sw_ap ON sw_ap.id = act10.sw_wb
+      LEFT JOIN tos_activity_points fw_ap ON fw_ap.id = act10.fw_wb
+
+      -- Relationships
+      LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
+      LEFT JOIN tos_drivers drv ON ord.driver_id = drv.id
+      LEFT JOIN tos_supplier supp ON ord.supplier_id = supp.id
+      LEFT JOIN tos_transporter trans ON ord.transporter_id = trans.id
+      LEFT JOIN tos_buying_center bc ON ord.buying_center_id = bc.id
+      LEFT JOIN tos_purchase_type pt ON ord.purchase_type_id = pt.id
+      LEFT JOIN tos_product_type prodty ON ord.product_type_id = prodty.id
+      LEFT JOIN tos_packing_type packty ON ord.packing_type_id = packty.id
+
+      -- Finished Orders + Product
+      LEFT JOIN tos_finished_orders f_ord ON f_ord.delivery_order_id = ord.id
+      LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
+
+      WHERE ord.isactive = TRUE
+      GROUP BY 
+        ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, pt.id,
+        prodty.id, packty.id, act10.id, act20.id,
+        sw_ap.id, fw_ap.id, fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
+      ORDER BY ord.created_at DESC
+    `;
+
 
     const queryParams = [];
     let whereClauses = [];
@@ -1351,10 +1446,38 @@ const getActivity = async (delivery_order_id) => {
         ord.old_truck_no,
         ord.isactive,
         ord.do_no,
+        ord.order_type,
 
+        -- Related main entities
+        cust.id AS customer_id,
         cust.name AS customer_name,
+        drv.id AS driver_id,
         drv.name AS driver_name,
         drv.license_no AS driver_phone,
+
+        -- New joins (Laravel-style nested mapping)
+        jsonb_build_object(
+          'id', transp.id,
+          'name', transp.name,
+          'phone', transp.phone_number
+        ) AS transporter,
+
+        jsonb_build_object(
+          'id', buyctr.id,
+          'name', buyctr.name,
+          'location', buyctr.location
+        ) AS buying_center,
+
+        jsonb_build_object(
+          'id', supp.id,
+          'name', supp.name,
+          'phone', supp.phone_number
+        ) AS supplier,
+
+        jsonb_build_object(
+          'id', ptype.id,
+          'name', ptype.name
+        ) AS purchase_type,
 
         COALESCE(
           json_agg(
@@ -1364,24 +1487,24 @@ const getActivity = async (delivery_order_id) => {
               'unit', f_ord.unit,
               'packing_type', vprod.name
             )
-          ) FILTER (WHERE ord.product_type_id IS NULL),
-             json_agg(
-    jsonb_build_object(
-      'name', ptype.name,
-      'packing_type', packtype.name,
-      'vessel_type', vtype.name,
-      'wheat_type', wtype.name
-    )
-  ) FILTER (WHERE ord.product_type_id IS NOT NULL),
+          ) FILTER (WHERE f_ord.id IS NOT NULL),
+          json_agg(
+            jsonb_build_object(
+              'name', ptype2.name,
+              'packing_type', packtype.name,
+              'vessel_type', vtype.name,
+              'wheat_type', wtype.name
+            )
+          ) FILTER (WHERE ord.product_type_id IS NOT NULL),
           '[]'::json
         ) AS products,
 
+        -- Activities (first weighing)
         act10.images,
         act10.tare_weight,
         act10.gross_weight AS gross_weight, 
         act10.qty AS net_weight,
         act10.id AS activity10_id,
-        act10.delivery_order_id AS order10_id,
         act10.created_at as created10_at,
         act10.sw_at as sw10_at,
         act10.fw_by as fw10_by,
@@ -1391,9 +1514,9 @@ const getActivity = async (delivery_order_id) => {
         CONCAT(sw10_user.first_name, ' ', sw10_user.last_name) AS sw10_name,
         sw10_user.phone AS sw10_phone,
 
+        -- Activities (second weighing)
         act20.gross_weight AS gross_weight_20, 
         act20.qty AS net_weight_20,
-        act20.delivery_order_id AS order20_id,
         act20.created_at as created20_at,
         act20.id AS activity20_id,
         act20.sw_at as sw20_at,
@@ -1417,16 +1540,20 @@ const getActivity = async (delivery_order_id) => {
 
       LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
       LEFT JOIN tos_drivers drv ON ord.driver_id = drv.id
-
       LEFT JOIN tos_finished_orders f_ord ON f_ord.delivery_order_id = ord.id
       LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
-       LEFT JOIN tos_packing_type vprod ON vprod.id = f_ord.packing_type_id
+      LEFT JOIN tos_packing_type vprod ON vprod.id = f_ord.packing_type_id
 
-      LEFT JOIN tos_product_type ptype ON ptype.id = ord.product_type_id
+      LEFT JOIN tos_product_type ptype2 ON ptype2.id = ord.product_type_id
       LEFT JOIN tos_packing_type packtype ON packtype.id = ord.packing_type_id
       LEFT JOIN tos_vessel vtype ON vtype.id = ord.vessel_id
       LEFT JOIN tos_wheat_type wtype ON wtype.id = ord.wheat_type_id
+      LEFT JOIN tos_supplier supp ON supp.id = ord.supplier_id
+      LEFT JOIN tos_buying_center buyctr ON buyctr.id = ord.buying_center_id
+      LEFT JOIN tos_transporter transp ON transp.id = ord.transporter_id
+      LEFT JOIN tos_purchase_type ptype ON ptype.id = ord.purchase_type_id
     `;
+
 
     const queryParams = [];
     let whereClauses = [];

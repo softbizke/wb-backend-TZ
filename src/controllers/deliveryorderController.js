@@ -12,6 +12,18 @@ const createDeliveryOrder = async (req, res) => {
     packing_type,
     vessel,
     do_no,
+    activity_check = 0,
+    wheat_type_id,
+    order_type = null,
+    order_items = [],
+    transporter_id,
+    buying_center_id,
+    supplier_id,
+    purchase_type_id,
+    transaction_type,
+    source,
+    destination
+
   } = req.body;
 
   // Validate the input fields
@@ -41,7 +53,18 @@ const createDeliveryOrder = async (req, res) => {
       product_type,
       packing_type,
       vessel,
-      do_no
+      do_no,
+      activity_check,
+      wheat_type_id,
+      order_type,
+      order_items,
+      transporter_id,
+      buying_center_id,
+      supplier_id,
+      purchase_type_id,
+      transaction_type,
+      source,
+      destination
     );
 
     // Return response based on the result
@@ -75,11 +98,11 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
     console.log("ORD", req.body);
 
     // Validate required fields
-    if (!truck_no || !(customer_id || stock_transfer_code) || !order_items) {
+    if (!truck_no || !(customer_id || supplier_id) || !order_items) {
       return res.status(400).json({
         success: false,
         message:
-          "Missing required fields: truck_no, customer_id/stock order and order_items are mandatory.",
+          "Missing required fields: truck_no, customer_id/supplier_id and order_items are mandatory.",
       });
     }
 
@@ -89,7 +112,7 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       truck_no,
       trailer_no || null, // Pass null if undefined
       customer_id,
-      stock_transfer_code || null,
+      supplier_id || null,
       driver_id || null, // Pass null if undefined
       measurement || 0, // Default to 0 if undefined
       product_type || null, // Pass null if undefined
