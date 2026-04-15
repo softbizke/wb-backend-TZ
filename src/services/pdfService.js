@@ -442,7 +442,6 @@ const getprocesseddeliveryorders = async (search) => {
                 ord.trailler_no,
                 ord.order_number,
                 ord.product_type_id,
-                ord.stock_transfer_code,
 
                 cust.name AS customer,
                 cust.bp_code AS customer_code,
@@ -459,12 +458,15 @@ const getprocesseddeliveryorders = async (search) => {
                 act1.qty AS net_weight,
                 act1.gross_weight AS gross_weight,
                 act1.sw_at as gross_time,
-                act1.avrg_w AS avrg_weight
+                act1.avrg_w AS avrg_weight,
+
+                sup.name AS supplier
               
             FROM tos_delivery_orders ord
             LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
             LEFT JOIN tos_finished_orders finished ON ord.id = finished.delivery_order_id
             LEFT JOIN tos_drivers driv ON  ord.driver_id = driv.id
+            LEFT JOIN tos_suppliers sup ON  ord.supplier_id = sup.id
             LEFT JOIN tos_product prodty ON finished.product_id = prodty.id
             LEFT JOIN tos_packing_type packty ON   ord.packing_type_id = packty.id
             LEFT JOIN tos_activities act1 ON ord.id = act1.delivery_order_id  AND act1.activity_type = 10

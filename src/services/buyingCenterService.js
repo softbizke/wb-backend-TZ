@@ -10,25 +10,25 @@ const pool = new Pool({
   port: dbConfig.port,
 });
 
-const createOrUpdateBuyingCenter = async (title, isactive) => {
+const createOrUpdateBuyingCenter = async (name, is_active) => {
   try {
-    const checkQuery = "SELECT * FROM tos_buying_center WHERE title = $1";
-    const result = await pool.query(checkQuery, [title]);
+    const checkQuery = "SELECT * FROM tos_buying_center WHERE name = $1";
+    const result = await pool.query(checkQuery, [name]);
 
     if (result.rows.length === 0) {
       const insertQuery = `
-        INSERT INTO tos_buying_center (title, isactive)
+        INSERT INTO tos_buying_center (name, is_active)
         VALUES ($1, $2)
       `;
-      await pool.query(insertQuery, [title, isactive]);
+      await pool.query(insertQuery, [name, is_active]);
       return { success: true, message: "Buying Center created successfully" };
     } else {
       const updateQuery = `
         UPDATE tos_buying_center
-        SET isactive = $1, updated_at = CURRENT_TIMESTAMP
-        WHERE title = $2
+        SET is_active = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE name = $2
       `;
-      await pool.query(updateQuery, [isactive, title]);
+      await pool.query(updateQuery, [is_active, name]);
       return { success: true, message: "Buying Center updated successfully" };
     }
   } catch (error) {
@@ -43,11 +43,11 @@ const getAllBuyingCenters = async (search) => {
     const params = [];
 
     if (search && search.trim() !== "") {
-      query += " WHERE title ILIKE $1";
+      query += " WHERE name ILIKE $1";
       params.push(`%${search}%`);
     }
 
-    query += " ORDER BY title ASC";
+    query += " ORDER BY name ASC";
     const result = await pool.query(query, params);
     return result.rows;
   } catch (error) {
@@ -56,21 +56,21 @@ const getAllBuyingCenters = async (search) => {
   }
 };
 
-const getOrCreateBuyingCenterByTitle = async (title, isactive) => {
+const getOrCreateBuyingCenterByTitle = async (name, is_active) => {
   try {
-    const query = "SELECT id FROM tos_buying_center WHERE title = $1";
-    const result = await pool.query(query, [title]);
+    const query = "SELECT id FROM tos_buying_center WHERE name = $1";
+    const result = await pool.query(query, [name]);
 
     if (result.rows.length > 0) {
       return result.rows[0].id;
     }
 
     const insertQuery = `
-      INSERT INTO tos_buying_center (title, isactive)
+      INSERT INTO tos_buying_center (name, is_active)
       VALUES ($1, $2)
       RETURNING id
     `;
-    const insertResult = await pool.query(insertQuery, [title, isactive]);
+    const insertResult = await pool.query(insertQuery, [name, is_active]);
     return insertResult.rows[0].id;
   } catch (error) {
     console.error("Error getting/creating buying center:", error);

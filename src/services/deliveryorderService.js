@@ -68,7 +68,7 @@ const createDeliveryOrder = async (
     let driverId = null;
     if (driver_id) {
       const checkDriverQuery =
-        "SELECT * FROM tos_drivers WHERE id = $1 AND isactive = true";
+        "SELECT * FROM tos_drivers WHERE id = $1 AND is_active = true";
       const driverResult = await client.query(checkDriverQuery, [driver_id]);
 
       if (driverResult.rows.length === 0) {
@@ -177,14 +177,17 @@ const createDeliveryOrder = async (
     let validBuyingCenterId = null;
     if (buying_center_id) {
       const checkBuyingCenterQuery =
-        "SELECT * FROM tos_buying_center WHERE id = $1 AND isactive = true";
+        "SELECT * FROM tos_buying_center WHERE id = $1 AND is_active = true";
       const buyingCenterResult = await client.query(checkBuyingCenterQuery, [
         buying_center_id,
       ]);
 
       if (buyingCenterResult.rows.length === 0) {
         await client.query("ROLLBACK");
-        return { success: false, message: "Buying center not found or inactive" };
+        return {
+          success: false,
+          message: "Buying center not found or inactive",
+        };
       }
 
       validBuyingCenterId = buyingCenterResult.rows[0].id;
@@ -195,7 +198,9 @@ const createDeliveryOrder = async (
     if (supplier_id) {
       const checkSupplierQuery =
         "SELECT * FROM tos_suppliers WHERE id = $1 AND isactive = true";
-      const supplierResult = await client.query(checkSupplierQuery, [supplier_id]);
+      const supplierResult = await client.query(checkSupplierQuery, [
+        supplier_id,
+      ]);
 
       if (supplierResult.rows.length === 0) {
         await client.query("ROLLBACK");
@@ -225,11 +230,8 @@ const createDeliveryOrder = async (
     // ✅ Validate packing
     let validPackingId = null;
     if (packing_id) {
-      const checkPackingQuery =
-        "SELECT * FROM tos_packing WHERE id = $1";
-      const packingResult = await client.query(checkPackingQuery, [
-        packing_id,
-      ]);
+      const checkPackingQuery = "SELECT * FROM tos_packing WHERE id = $1";
+      const packingResult = await client.query(checkPackingQuery, [packing_id]);
 
       if (packingResult.rows.length === 0) {
         await client.query("ROLLBACK");
@@ -238,9 +240,6 @@ const createDeliveryOrder = async (
 
       validPackingId = packingResult.rows[0].id;
     }
-
-
-
 
     const insertQuery = `
       INSERT INTO tos_delivery_orders 
@@ -309,7 +308,6 @@ const createDeliveryOrder = async (
       validPurchaseTypeId,
     ]);
 
-
     const orderNumber = result.rows[0].order_number;
 
     const orderQuery =
@@ -339,8 +337,9 @@ const createDeliveryOrder = async (
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
-    for (const order of order_items) {
+    console.log("order_items", order_items);
 
+    for (const order of order_items) {
       if (typeof order.product === "string") {
         // Product is a string → find or create it
         const payload = {
@@ -381,7 +380,6 @@ const createDeliveryOrder = async (
       }
     }
 
-
     await client.query("COMMIT"); // Commit the transaction
 
     return {
@@ -392,6 +390,7 @@ const createDeliveryOrder = async (
   } catch (error) {
     await client.query("ROLLBACK"); // Roll back the transaction in case of error
     console.error("Error creating delivery order:", error);
+    console.log("order_items", order_items);
     throw new Error("Server error");
   } finally {
     client.release(); // Release the database client
@@ -449,7 +448,7 @@ const createDeliveryAndFinishedOrder = async (
   buying_center_id,
   supplier_id,
   purchase_type_id,
-  order_items
+  order_items,
 ) => {
   const client = await pool.connect();
   try {
@@ -458,7 +457,7 @@ const createDeliveryAndFinishedOrder = async (
     // ✅ Validate customer
     const customerRes = await client.query(
       "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true",
-      [customer_name]
+      [customer_name],
     );
     if (customerRes.rows.length === 0)
       throw new Error("Customer not found or inactive");
@@ -468,8 +467,8 @@ const createDeliveryAndFinishedOrder = async (
     let validDriverId = null;
     if (driver_id) {
       const driverRes = await client.query(
-        "SELECT * FROM tos_drivers WHERE id = $1 AND isactive = true",
-        [driver_id]
+        "SELECT * FROM tos_drivers WHERE id = $1 AND is_active = true",
+        [driver_id],
       );
       if (driverRes.rows.length === 0)
         throw new Error("Driver not found or inactive");
@@ -481,7 +480,7 @@ const createDeliveryAndFinishedOrder = async (
     if (product_type_id) {
       const productRes = await client.query(
         "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true",
-        [product_type_id]
+        [product_type_id],
       );
       if (productRes.rows.length === 0)
         throw new Error("Product not found or inactive");
@@ -491,7 +490,7 @@ const createDeliveryAndFinishedOrder = async (
     // ✅ Validate packing type
     const packRes = await client.query(
       "SELECT * FROM tos_packing_type WHERE id = $1 AND isactive = true",
-      [packing_type_id]
+      [packing_type_id],
     );
     if (packRes.rows.length === 0)
       throw new Error("Packing type not found or inactive");
@@ -500,15 +499,35 @@ const createDeliveryAndFinishedOrder = async (
     // ✅ Validate linked entities
     const validateActive = async (table, id, name) => {
       if (!id) return null;
-      const res = await client.query(`SELECT * FROM ${table} WHERE id = $1 AND isactive = true`, [id]);
-      if (res.rows.length === 0) throw new Error(`${name} not found or inactive`);
+      const res = await client.query(
+        `SELECT * FROM ${table} WHERE id = $1 AND isactive = true`,
+        [id],
+      );
+      if (res.rows.length === 0)
+        throw new Error(`${name} not found or inactive`);
       return res.rows[0].id;
     };
 
-    const validTransporterId = await validateActive("tos_transporter", transporter_id, "Transporter");
-    const validBuyingCenterId = await validateActive("tos_buying_center", buying_center_id, "Buying center");
-    const validSupplierId = await validateActive("tos_supplier", supplier_id, "Supplier");
-    const validPurchaseTypeId = await validateActive("tos_purchase_type", purchase_type_id, "Purchase type");
+    const validTransporterId = await validateActive(
+      "tos_transporter",
+      transporter_id,
+      "Transporter",
+    );
+    const validBuyingCenterId = await validateActive(
+      "tos_buying_center",
+      buying_center_id,
+      "Buying center",
+    );
+    const validSupplierId = await validateActive(
+      "tos_supplier",
+      supplier_id,
+      "Supplier",
+    );
+    const validPurchaseTypeId = await validateActive(
+      "tos_purchase_type",
+      purchase_type_id,
+      "Purchase type",
+    );
 
     // ✅ Insert new delivery order
     const insertDeliveryOrderQuery = `
@@ -591,14 +610,13 @@ const createDeliveryAndFinishedOrder = async (
     };
   } catch (error) {
     await client.query("ROLLBACK");
+    console.log("error crreating ddd", order_items);
     console.error("Error creating delivery order and finished orders:", error);
     return { success: false, message: error.message };
   } finally {
     client.release();
   }
 };
-
-
 
 const createDeliveryAndFinishedOrderV2 = async (
   order_id,
@@ -613,27 +631,35 @@ const createDeliveryAndFinishedOrderV2 = async (
   buying_center_id,
   supplier_id,
   purchase_type_id,
-  order_items
+  order_items,
 ) => {
   const client = await pool.connect();
+  console.log("ORDER ITEMS TYPE:", typeof order_items);
+  console.log("FIRST ITEM:", order_items);
+
   try {
     await client.query("BEGIN");
 
     // ✅ Validate customer
-    const checkCustomerQuery =
-      "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true";
-    const customerResult = await client.query(checkCustomerQuery, [customer_name]);
-    if (customerResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return { success: false, message: "Customer not found or inactive" };
+    let customerId = null;
+    if (customer_name) {
+      const checkCustomerQuery =
+        "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true";
+      const customerResult = await client.query(checkCustomerQuery, [
+        customer_name,
+      ]);
+      if (customerResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Customer not found or inactive" };
+      }
+      customerId = customerResult.rows[0].id;
     }
-    const customerId = customerResult.rows[0].id;
 
     // ✅ Validate driver
     let validDriverId = null;
     if (driver_id) {
       const checkDriverQuery =
-        "SELECT * FROM tos_drivers WHERE id = $1 AND isactive = true";
+        "SELECT * FROM tos_drivers WHERE id = $1 AND is_active = true";
       const driverResult = await client.query(checkDriverQuery, [driver_id]);
       if (driverResult.rows.length === 0) {
         await client.query("ROLLBACK");
@@ -647,7 +673,9 @@ const createDeliveryAndFinishedOrderV2 = async (
     if (product_type_id) {
       const checkProductQuery =
         "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true";
-      const productResult = await client.query(checkProductQuery, [product_type_id]);
+      const productResult = await client.query(checkProductQuery, [
+        product_type_id,
+      ]);
       if (productResult.rows.length === 0) {
         await client.query("ROLLBACK");
         return { success: false, message: "Product not found or inactive" };
@@ -656,19 +684,27 @@ const createDeliveryAndFinishedOrderV2 = async (
     }
 
     // ✅ Validate packing type
-    const checkPackingQuery =
-      "SELECT * FROM tos_packing_type WHERE id = $1 AND isactive = true";
-    const packingResult = await client.query(checkPackingQuery, [packing_type_id]);
-    if (packingResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return { success: false, message: "Packing not found or inactive" };
+    let validPackingId = null;
+    if (packing_type_id) {
+      const checkPackingQuery =
+        "SELECT * FROM tos_packing_type WHERE id = $1 AND isactive = true";
+      const packingResult = await client.query(checkPackingQuery, [
+        packing_type_id,
+      ]);
+      if (packingResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Packing not found or inactive" };
+      }
+      validPackingId = packingResult.rows[0].id;
     }
-    const validPackingId = packingResult.rows[0].id;
 
     // ✅ Validate transporter, buying center, supplier, and purchase type
     const validateActive = async (table, id, fieldName) => {
       if (!id) return null;
-      const res = await client.query(`SELECT * FROM ${table} WHERE id = $1 AND isactive = true`, [id]);
+      const res = await client.query(
+        `SELECT * FROM ${table} WHERE id = $1 AND ${table == "tos_buying_center" ? "is_active" : "isactive"} = true`,
+        [id],
+      );
       if (res.rows.length === 0) {
         await client.query("ROLLBACK");
         throw new Error(`${fieldName} not found or inactive`);
@@ -676,10 +712,26 @@ const createDeliveryAndFinishedOrderV2 = async (
       return res.rows[0].id;
     };
 
-    const validTransporterId = await validateActive("tos_transporter", transporter_id, "Transporter");
-    const validBuyingCenterId = await validateActive("tos_buying_center", buying_center_id, "Buying center");
-    const validSupplierId = await validateActive("tos_suppliers", supplier_id, "Supplier");
-    const validPurchaseTypeId = await validateActive("tos_purchase_type", purchase_type_id, "Purchase type");
+    const validTransporterId = await validateActive(
+      "tos_transporter",
+      transporter_id,
+      "Transporter",
+    );
+    const validBuyingCenterId = await validateActive(
+      "tos_buying_center",
+      buying_center_id,
+      "Buying center",
+    );
+    const validSupplierId = await validateActive(
+      "tos_suppliers",
+      supplier_id,
+      "Supplier",
+    );
+    const validPurchaseTypeId = await validateActive(
+      "tos_purchase_type",
+      purchase_type_id,
+      "Purchase type",
+    );
 
     // ✅ Update the existing delivery order
     const updateDeliveryOrderQuery = `
@@ -696,6 +748,8 @@ const createDeliveryAndFinishedOrderV2 = async (
           purchase_type_id = $10
       WHERE id = $11 AND isactive = true
     `;
+
+    console.log("I a m here 12222");
     await client.query(updateDeliveryOrderQuery, [
       truck_no,
       trailler_no,
@@ -710,6 +764,8 @@ const createDeliveryAndFinishedOrderV2 = async (
       order_id,
     ]);
 
+    console.log("I a m here 22222");
+
     // ✅ Insert finished orders
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
@@ -722,6 +778,8 @@ const createDeliveryAndFinishedOrderV2 = async (
       const sourceVal = order.source || null;
       const destinationVal = order.destination || null;
       const transactionTypeVal = order.transaction_type || null;
+
+      console.log("order.product", order);
 
       if (typeof order.product === "string") {
         const payload = {
@@ -760,18 +818,21 @@ const createDeliveryAndFinishedOrderV2 = async (
     await client.query("COMMIT");
     return {
       success: true,
-      message: "Delivery order updated and finished orders created successfully",
+      message:
+        "Delivery order updated and finished orders created successfully",
       delivery_order_id: order_id,
     };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error updating delivery order and inserting finished orders:", error);
+    console.error(
+      "Error updating delivery order and inserting finished orders:",
+      error,
+    );
     return { success: false, message: error.message };
   } finally {
     client.release();
   }
 };
-
 
 // Function to retrieve all customer types with optional search functionality
 const getAllDeliveryorders = async (
@@ -782,7 +843,7 @@ const getAllDeliveryorders = async (
   customer,
   created_at,
   isactive,
-  limit
+  limit,
 ) => {
   try {
     // Base query to retrieve customer types
@@ -793,7 +854,7 @@ const getAllDeliveryorders = async (
         cust.name AS customer,
         supp.name AS supplier_name,
         trans.title AS transporter_title,
-        buyc.title AS buying_center_title,
+        buyc.name AS buying_center_title,
         prodty.name AS producttype,
         packty.name AS packingtype,
         purchtype.title AS purchase_type_title,
@@ -823,7 +884,7 @@ const getAllDeliveryorders = async (
 
         jsonb_build_object(
           'id', buyc.id,
-          'title', buyc.title
+          'title', buyc.name
         ) AS buying_center,
 
         jsonb_build_object(
@@ -913,7 +974,6 @@ const getAllDeliveryorders = async (
     throw new Error("Server error");
   }
 };
-
 
 module.exports = {
   createDeliveryOrder,

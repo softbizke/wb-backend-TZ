@@ -128,6 +128,7 @@ async function autoPrintReceipt(order_no, res, auth) {
     console.log("PRINT:: ", orderData[0]);
     const {
       customer,
+      supplier,
       product_type,
       packing_type,
       truck_no,
@@ -143,7 +144,6 @@ async function autoPrintReceipt(order_no, res, auth) {
       qty,
       phone,
       avrg_weight,
-      stock_transfer_code,
     } = orderData[0];
     // Format date
     const formatDate = (date) => {
@@ -199,10 +199,10 @@ async function autoPrintReceipt(order_no, res, auth) {
               //customer details
               .align("LT")
               .style("B")
-              .text(stock_transfer_code?"STOCK ORDER DETAILS":"CUSTOMER DETAILS")
+              .text(customer?"CUSTOMER DETAILS":supplier?"SUPPLIER DETAILS":"PARTY DETAILS")
               .drawLine()
               .style("NORMAL")
-              .text(`${customer ?? stock_transfer_code ?? "N/A"}`)
+              .text(`${customer ?? supplier ?? "N/A"}`)
               .drawLine()
               .newLine()
 

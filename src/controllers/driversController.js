@@ -18,7 +18,7 @@ const createOrUpdateDriver = async (req, res) => {
       id_no,
       name,
       license_no,
-      isactive
+      isactive,
     );
 
     // Return response based on the result
@@ -37,9 +37,7 @@ const createOrUpdateDriver = async (req, res) => {
 const getAllDrivers = async (req, res) => {
   try {
     // Extract the search query from request parameters
-    const { name, id_no } = req.query;
-    console.log(id_no, name);
-
+    const { name } = req.query;
     // Call the service function with the search query
     const customerTypes = await drivers.getAllDrivers(name);
 

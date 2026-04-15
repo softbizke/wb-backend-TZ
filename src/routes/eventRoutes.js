@@ -365,7 +365,7 @@ router.get(
   authenticateToken.authenticateToken,
   deliveryorder.getAllDeliveryorders
 );
-router.get("/getdeliveryactivities/list/v1", activities.getAllActivities);
+router.get("/getdeliveryactivities/list/v1", authenticateToken.authenticateToken, activities.getAllActivities);
 router.get(
   "/getdeliveryactivity/v1",
   authenticateToken.authenticateToken,

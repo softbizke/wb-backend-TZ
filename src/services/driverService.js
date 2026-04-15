@@ -1,5 +1,10 @@
 const { Pool } = require("pg");
 const { dbConfig } = require("../config/dbConfig");
+const { default: axios } = require("axios");
+const {
+  WEIGHBRIDGE_CMS_API_URL,
+  WEIGHBRIDGE_CMS_API_KEY,
+} = require("../config/configs");
 
 // Create a connection pool
 const pool = new Pool({
@@ -11,7 +16,7 @@ const pool = new Pool({
 });
 
 // Function to create or update driver
-const createOrUpdateDriver = async (id_no, name, license_no, isactive) => {
+const createOrUpdateDriver = async (id_no, name, license_no, is_active) => {
   try {
     // Check if the driver already exists by id_no
     const checkDriverQuery = "SELECT * FROM tos_drivers WHERE id_no = $1";
@@ -20,20 +25,20 @@ const createOrUpdateDriver = async (id_no, name, license_no, isactive) => {
     if (driverResult.rows.length === 0) {
       // Driver doesn't exist, create a new one
       const insertQuery = `
-          INSERT INTO tos_drivers (name, id_no, license_no, isactive)
+          INSERT INTO tos_drivers (name, id_no, license_no, is_active)
           VALUES ($1, $2, $3, $4)
         `;
-      await pool.query(insertQuery, [name, id_no, license_no, isactive]);
+      await pool.query(insertQuery, [name, id_no, license_no, is_active]);
 
       return { success: true, message: "Driver created successfully" };
     } else {
-      // Driver exists, update the driver's details (name, license_no, isactive)
+      // Driver exists, update the driver's details (name, license_no, is_active)
       const updateQuery = `
           UPDATE tos_drivers
-          SET name = $1, license_no = $2, isactive = $3
+          SET name = $1, license_no = $2, is_active = $3
           WHERE id_no = $4
         `;
-      await pool.query(updateQuery, [name, license_no, isactive, id_no]);
+      await pool.query(updateQuery, [name, license_no, is_active, id_no]);
 
       return { success: true, message: "Driver updated successfully" };
     }
@@ -69,7 +74,7 @@ const getAllDrivers = async (search) => {
 };
 
 const getOrCreateDriverByID = async (data) => {
-  const { id, name, phone, isactive } = data;
+  const { id, name, phone, is_active } = data;
   // Validate the input field
   try {
     let query = "SELECT id FROM tos_drivers";
@@ -83,7 +88,7 @@ const getOrCreateDriverByID = async (data) => {
       return result.rows[0].id;
     }
     const insertQuery = `
-        INSERT INTO tos_drivers (name, id_no, license_no, isactive)
+        INSERT INTO tos_drivers (name, id_no, license_no, is_active)
         VALUES ($1, $2, $3, $4)
         RETURNING id
       `;
@@ -91,7 +96,7 @@ const getOrCreateDriverByID = async (data) => {
       name,
       id,
       phone,
-      isactive,
+      is_active,
     ]);
     const newDriverId = insertResult.rows[0].id;
     return newDriverId;

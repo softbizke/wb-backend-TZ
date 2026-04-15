@@ -144,7 +144,7 @@ const createOrUpdateActivityPoint = async (
   name,
   address,
   isactive,
-  camera_ids
+  camera_ids,
 ) => {
   try {
     const checkActivityPointQuery =
@@ -323,7 +323,7 @@ const createOrUpdateActivity = async (
     `;
     const existingActivityResult = await pool.query(
       checkExistingActivityQuery,
-      [order.id, activityType.type]
+      [order.id, activityType.type],
     );
 
     if (existingActivityResult.rows.length > 0) {
@@ -350,7 +350,7 @@ const createOrUpdateActivity = async (
       const getTareWeightQuery = `
         SELECT tare_weight 
         FROM tos_activities 
-        WHERE delivery_order_id = $1 AND activity_type = 10 AND isactive = true
+        WHERE id = $1 AND activity_type = 10 AND isactive = true
       `;
       const tareWeightResult = await pool.query(getTareWeightQuery, [order.id]);
 
@@ -372,7 +372,7 @@ const createOrUpdateActivity = async (
         SET isactive = false 
         WHERE delivery_order_id = $1 AND activity_type = 10 AND isactive = true
       `,
-        [order.id]
+        [order.id],
       );
     }
     //log order id
@@ -422,7 +422,7 @@ const createOrUpdateActivity = async (
       SET activitycheck = $1 
       WHERE id = $2
     `,
-      [activityValues.activitycheck, order.id]
+      [activityValues.activitycheck, order.id],
     );
 
     return {
@@ -470,7 +470,6 @@ const createOrUpdateActivityV2 = async (data, user) => {
     source,
     destination,
     packing_id,
-
   } = data;
   let activity_type_name;
   let qty;
@@ -485,6 +484,8 @@ const createOrUpdateActivityV2 = async (data, user) => {
       let activity_check = 1;
 
       // Create a new delivery order
+
+      console.log("start_order_items", order_items);
       const orderResult = await deliveryOrderService.createDeliveryOrder(
         truck_no,
         old_truck_no,
@@ -498,7 +499,6 @@ const createOrUpdateActivityV2 = async (data, user) => {
         do_no,
         activity_check,
         wheat_type_id,
-        stock_transfer_code,
         order_type,
         order_items,
         transporter_id,
@@ -632,7 +632,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
     console.log("ACTv  ID ", activity_id);
     const existingActivityResult = await pool.query(
       checkExistingActivityQuery,
-      [activity_id]
+      [activity_id],
     );
     console.log("ACTIVITY ", existingActivityResult.rows);
     if (existingActivityResult.rows.length > 0) {
@@ -667,7 +667,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
       // Update the delivery order's activitycheck
       const activityCheck = activity_type_name === "WBIN" ? 1 : 2;
       const measurement = Math.abs(
-        qty - (await getTareWeight(existingActivityId))
+        qty - (await getTareWeight(existingActivityId)),
       );
 
       // Update the delivery order's activitycheck and measurement
@@ -689,10 +689,6 @@ const createOrUpdateActivityV2 = async (data, user) => {
         buying_center_id,
         supplier_id,
         purchase_type_id,
-        transaction_type,
-        source,
-        destination,
-        packing_id,
       };
 
       const setClauses = [];
@@ -795,7 +791,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         WHERE id = $2
         RETURNING order_number
       `,
-        [activity_type_name === "WBIN" ? 1 : 2, order.id]
+        [activity_type_name === "WBIN" ? 1 : 2, order.id],
       );
 
       //get order number from tos_delivery_orders
@@ -818,12 +814,14 @@ const createOrUpdateActivityV2 = async (data, user) => {
 
 // Helper function to get tare weight AND isactive = true
 const getTareWeight = async (id) => {
+  console.log("received id", id);
   const getTareWeightQuery = `
     SELECT tare_weight 
     FROM tos_activities 
     WHERE id = $1 AND activity_type = 10 
   `;
   const tareWeightResult = await pool.query(getTareWeightQuery, [id]);
+  console.log("Tare weight:: ", id);
   console.log("T W :: ", tareWeightResult.rows[0]?.tare_weight);
   if (
     tareWeightResult.rows.length === 0 ||
@@ -912,8 +910,7 @@ const getAllActivityPoint = async (search) => {
 };
 
 const getCamerasActivityPoint = async (cameraId) => {
-
-  if(!cameraId) {
+  if (!cameraId) {
     throw new Error("Camera Id is required");
   }
 
@@ -1097,10 +1094,32 @@ const getAllActivities = async (search, order_no) => {
     throw new Error("Server error");
   }
 };
-
 const getAllActivitiesV2 = async (search, order_no) => {
   try {
-    let query = `
+    const queryParams = [];
+    const whereClauses = [];
+
+    // Optional filters
+    if (search) {
+      queryParams.push(`%${search}%`);
+      whereClauses.push(`ord.truck_no ILIKE $${queryParams.length}`);
+    }
+
+    if (order_no) {
+      queryParams.push(order_no);
+      whereClauses.push(`ord.order_number = $${queryParams.length}`);
+    }
+
+    // Final WHERE clause
+    // const whereSQL = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+    const baseCondition = `act10.sw_at IS NOT NULL`; // Ensure we only get orders that have a second weight recorded
+
+    const whereSQL = whereClauses.length
+      ? `WHERE ${whereClauses.join(" AND ")} AND ${baseCondition}`
+      : `WHERE ${baseCondition}`;
+
+    const query = `
       SELECT 
         ord.id AS delivery_order_id,
         ord.order_number, 
@@ -1112,30 +1131,27 @@ const getAllActivitiesV2 = async (search, order_no) => {
         ord.isactive,
         ord.do_no,
         ord.order_type,
-
         ord.driver_id,
         ord.customer_id,
         ord.supplier_id,
         ord.transporter_id,
         ord.buying_center_id,
         ord.purchase_type_id,
-
         ord.created_at,
-        ord.updated_at,
 
         -- 🚛 Driver
         jsonb_build_object(
           'id', drv.id,
           'name', drv.name,
           'license_no', drv.license_no,
-          'phone', drv.phone
+          'id_no', drv.id_no
         ) AS driver,
 
         -- 👥 Customer
         jsonb_build_object(
           'id', cust.id,
           'name', cust.name,
-          'phone_number', cust.phone_number
+          'bp_code', cust.bp_code
         ) AS customer,
 
         -- 🏢 Supplier
@@ -1148,21 +1164,19 @@ const getAllActivitiesV2 = async (search, order_no) => {
         -- 🚚 Transporter
         jsonb_build_object(
           'id', trans.id,
-          'name', trans.name,
-          'phone_number', trans.phone_number
+          'title', trans.title
         ) AS transporter,
 
         -- 🏬 Buying Center
         jsonb_build_object(
           'id', bc.id,
-          'name', bc.name,
-          'location', bc.location
+          'title', bc.name
         ) AS buying_center,
 
         -- 💰 Purchase Type
         jsonb_build_object(
           'id', pt.id,
-          'name', pt.name
+          'title', pt.title
         ) AS purchase_type,
 
         -- ⚖️ Product Type and Packing Type
@@ -1182,10 +1196,14 @@ const getAllActivitiesV2 = async (search, order_no) => {
             jsonb_build_object(
               'quantity', f_ord.measurement, 
               'name', prod.name,
+              'id', prod.id,
+              'sku', prod.item_code,
+              'product_type_id', prod.product_type_id,
               'unit', f_ord.unit,
               'transaction_type', f_ord.transaction_type,
               'source', f_ord.source,
-              'destination', f_ord.destination
+              'destination', f_ord.destination,
+              'measurement', f_ord.measurement
             )
           ) FILTER (WHERE f_ord.id IS NOT NULL),
           '[]'::json
@@ -1194,6 +1212,7 @@ const getAllActivitiesV2 = async (search, order_no) => {
         -- 🧾 Weighbridge + Activity (10)
         sw_ap.name AS sw_wb,
         fw_ap.name AS fw_wb,
+        act10.delivery_order_id AS order10_id,
         act10.truck_no AS truck_no_10,
         act10.images,
         act10.tare_weight,
@@ -1222,6 +1241,7 @@ const getAllActivitiesV2 = async (search, order_no) => {
         ) AS sw10_user,
 
         -- ⚖️ Activity 20
+        act20.delivery_order_id AS order20_id,
         act20.gross_weight AS gross_weight_20, 
         act20.qty AS net_weight_20,
         act20.created_at AS created20_at,
@@ -1265,7 +1285,7 @@ const getAllActivitiesV2 = async (search, order_no) => {
       -- Relationships
       LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
       LEFT JOIN tos_drivers drv ON ord.driver_id = drv.id
-      LEFT JOIN tos_supplier supp ON ord.supplier_id = supp.id
+      LEFT JOIN tos_suppliers supp ON ord.supplier_id = supp.id
       LEFT JOIN tos_transporter trans ON ord.transporter_id = trans.id
       LEFT JOIN tos_buying_center bc ON ord.buying_center_id = bc.id
       LEFT JOIN tos_purchase_type pt ON ord.purchase_type_id = pt.id
@@ -1276,51 +1296,23 @@ const getAllActivitiesV2 = async (search, order_no) => {
       LEFT JOIN tos_finished_orders f_ord ON f_ord.delivery_order_id = ord.id
       LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
 
-      WHERE ord.isactive = TRUE
+      ${whereSQL}
+
       GROUP BY 
         ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, pt.id,
         prodty.id, packty.id, act10.id, act20.id,
         sw_ap.id, fw_ap.id, fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
-      ORDER BY ord.created_at DESC
+
+      ORDER BY 
+        (act10.qty IS NULL) ASC,
+        ord.id DESC
     `;
 
-
-    const queryParams = [];
-    let whereClauses = [];
-
-    if (search) {
-      queryParams.push(`%${search}%`);
-      whereClauses.push(`ord.truck_no ILIKE $${queryParams.length}`);
-    }
-
-    if (order_no) {
-      queryParams.push(order_no);
-      whereClauses.push(`ord.order_number = $${queryParams.length}`);
-    }
-
-    if (whereClauses.length > 0) {
-      query += ` WHERE ${whereClauses.join(" AND ")}`;
-    }
-
-    // Add ordering
-
-    query += `
-      GROUP BY 
-    ord.id, cust.name, drv.name, drv.license_no,
-    act10.id, act20.id,
-    fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id,sw_ap.name, fw_ap.name,
-    sw20_ap.name, fw20_ap.name
-  
-    
-    ORDER BY 
-    (act10.qty IS NULL) ASC,
-    ord.id DESC`;
-
+    // console.log("Final Query:", query);
     const result = await pool.query(query, queryParams);
     return result.rows;
   } catch (error) {
     console.error("Error retrieving activities:", error);
-    console.error("Error retrieving activities:", error.message);
     throw new Error("Server error");
   }
 };
@@ -1478,49 +1470,73 @@ const getActivity = async (delivery_order_id) => {
         cust.name AS customer_name,
         drv.id AS driver_id,
         drv.name AS driver_name,
-        drv.license_no AS driver_phone,
+        drv.license_no AS driver_license_no,
+        supp.id AS supplier_id,
+        supp.name AS supplier_name,
 
-        -- New joins (Laravel-style nested mapping)
+        -- 🚛 Driver
         jsonb_build_object(
-          'id', transp.id,
-          'name', transp.name,
-          'phone', transp.phone_number
-        ) AS transporter,
+          'id', drv.id,
+          'name', drv.name,
+          'license_no', drv.license_no,
+          'id_no', drv.id_no
+        ) AS driver,
 
+        -- 👥 Customer
         jsonb_build_object(
-          'id', buyctr.id,
-          'name', buyctr.name,
-          'location', buyctr.location
-        ) AS buying_center,
+          'id', cust.id,
+          'name', cust.name,
+          'bp_code', cust.bp_code
+        ) AS customer,
 
+        -- 🏢 Supplier
         jsonb_build_object(
           'id', supp.id,
           'name', supp.name,
-          'phone', supp.phone_number
+          'phone_number', supp.phone_number
         ) AS supplier,
 
+        -- 🚚 Transporter
+        jsonb_build_object(
+          'id', transp.id,
+          'title', transp.title
+        ) AS transporter,
+
+        -- 🏬 Buying Center
+        jsonb_build_object(
+          'id', bc.id,
+          'title', bc.name
+        ) AS buying_center,
+
+        -- 💰 Purchase Type
+        jsonb_build_object(
+          'id', pt.id,
+          'title', pt.title
+        ) AS purchase_type,
+
+        -- ⚖️ Product Type and Packing Type
         jsonb_build_object(
           'id', ptype.id,
           'name', ptype.name
-        ) AS purchase_type,
+        ) AS product_type,
 
+        jsonb_build_object(
+          'id', packtype.id,
+          'name', packtype.name
+        ) AS packing_type,
+
+        -- 🧱 Products JSON array
         COALESCE(
           json_agg(
             jsonb_build_object(
+              'quantity', f_ord.measurement, 
               'name', prod.name,
-              'quantity', f_ord.measurement,
               'unit', f_ord.unit,
-              'packing_type', vprod.name
+              'transaction_type', f_ord.transaction_type,
+              'source', f_ord.source,
+              'destination', f_ord.destination
             )
           ) FILTER (WHERE f_ord.id IS NOT NULL),
-          json_agg(
-            jsonb_build_object(
-              'name', ptype2.name,
-              'packing_type', packtype.name,
-              'vessel_type', vtype.name,
-              'wheat_type', wtype.name
-            )
-          ) FILTER (WHERE ord.product_type_id IS NOT NULL),
           '[]'::json
         ) AS products,
 
@@ -1530,10 +1546,10 @@ const getActivity = async (delivery_order_id) => {
         act10.gross_weight AS gross_weight, 
         act10.qty AS net_weight,
         act10.id AS activity10_id,
-        act10.created_at as created10_at,
-        act10.sw_at as sw10_at,
-        act10.fw_by as fw10_by,
-        act10.sw_by as sw10_by,
+        act10.created_at AS created10_at,
+        act10.sw_at AS sw10_at,
+        act10.fw_by AS fw10_by,
+        act10.sw_by AS sw10_by,
         CONCAT(fw10_user.first_name, ' ', fw10_user.last_name) AS fw10_name,
         fw10_user.phone AS fw10_phone,
         CONCAT(sw10_user.first_name, ' ', sw10_user.last_name) AS sw10_name,
@@ -1542,11 +1558,11 @@ const getActivity = async (delivery_order_id) => {
         -- Activities (second weighing)
         act20.gross_weight AS gross_weight_20, 
         act20.qty AS net_weight_20,
-        act20.created_at as created20_at,
+        act20.created_at AS created20_at,
         act20.id AS activity20_id,
-        act20.sw_at as sw20_at,
-        act20.fw_by as fw20_by,
-        act20.sw_by as sw20_by,
+        act20.sw_at AS sw20_at,
+        act20.fw_by AS fw20_by,
+        act20.sw_by AS sw20_by,
         CONCAT(fw20_user.first_name, ' ', fw20_user.last_name) AS fw20_name,
         fw20_user.phone AS fw20_phone,
         CONCAT(sw20_user.first_name, ' ', sw20_user.last_name) AS sw20_name,
@@ -1554,9 +1570,9 @@ const getActivity = async (delivery_order_id) => {
 
       FROM tos_delivery_orders ord
       LEFT JOIN tos_activities act10 
-          ON ord.id = act10.delivery_order_id AND act10.activity_type = 10
+        ON ord.id = act10.delivery_order_id AND act10.activity_type = 10
       LEFT JOIN tos_activities act20 
-          ON ord.id = act20.delivery_order_id AND act20.activity_type = 20
+        ON ord.id = act20.delivery_order_id AND act20.activity_type = 20
 
       LEFT JOIN tos_users fw10_user ON fw10_user.id = act10.fw_by
       LEFT JOIN tos_users sw10_user ON sw10_user.id = act10.sw_by
@@ -1569,19 +1585,18 @@ const getActivity = async (delivery_order_id) => {
       LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
       LEFT JOIN tos_packing_type vprod ON vprod.id = f_ord.packing_type_id
 
-      LEFT JOIN tos_product_type ptype2 ON ptype2.id = ord.product_type_id
+      LEFT JOIN tos_product_type ptype ON ptype.id = ord.product_type_id
       LEFT JOIN tos_packing_type packtype ON packtype.id = ord.packing_type_id
-      LEFT JOIN tos_vessel vtype ON vtype.id = ord.vessel_id
+      LEFT JOIN tos_vessel vessel ON vessel.id = ord.vessel_id
       LEFT JOIN tos_wheat_type wtype ON wtype.id = ord.wheat_type_id
-      LEFT JOIN tos_supplier supp ON supp.id = ord.supplier_id
-      LEFT JOIN tos_buying_center buyctr ON buyctr.id = ord.buying_center_id
+      LEFT JOIN tos_suppliers supp ON supp.id = ord.supplier_id
+      LEFT JOIN tos_buying_center bc ON bc.id = ord.buying_center_id
       LEFT JOIN tos_transporter transp ON transp.id = ord.transporter_id
-      LEFT JOIN tos_purchase_type ptype ON ptype.id = ord.purchase_type_id
+      LEFT JOIN tos_purchase_type pt ON pt.id = ord.purchase_type_id
     `;
 
-
     const queryParams = [];
-    let whereClauses = [];
+    const whereClauses = [];
 
     if (delivery_order_id) {
       queryParams.push(delivery_order_id);
@@ -1594,14 +1609,13 @@ const getActivity = async (delivery_order_id) => {
 
     query += `
       GROUP BY 
-        ord.id, cust.name, drv.name, drv.license_no,
-        act10.id, act20.id,
-        fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id,
-        ptype.name, packtype.name, vtype.name, wtype.name
+        ord.id, cust.id, drv.id, supp.id, transp.id, bc.id, pt.id, 
+        ptype.id, packtype.id, act10.id, act20.id,
+        fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
 
       ORDER BY 
         (act10.qty IS NULL) ASC,
-        ord.id DESC
+        ord.id DESC;
     `;
 
     const result = await pool.query(query, queryParams);
@@ -1611,6 +1625,7 @@ const getActivity = async (delivery_order_id) => {
     throw new Error("Server error");
   }
 };
+
 const approveActivity = async ({ id, reason, user }) => {
   const client = await pool.connect();
 
@@ -1637,7 +1652,7 @@ const approveActivity = async ({ id, reason, user }) => {
 
     await client.query(
       `UPDATE tos_delivery_orders SET isactive = false WHERE id = $1`,
-      [delivery_order_id]
+      [delivery_order_id],
     );
 
     await client.query("COMMIT");

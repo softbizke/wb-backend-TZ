@@ -91,8 +91,13 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       driver_id, // Optional
       measurement,
       product_type, // Optional
+      supplier_id,
       // packing_type,
       order_items,
+      transporter_id, 
+      buying_center_id,
+      purchase_type_id,
+      
     } = req.body;
 
     console.log("ORD", req.body);
@@ -112,11 +117,14 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       truck_no,
       trailer_no || null, // Pass null if undefined
       customer_id,
-      supplier_id || null,
-      driver_id || null, // Pass null if undefined
+      driver_id || null,
       measurement || 0, // Default to 0 if undefined
       product_type || null, // Pass null if undefined
       1, //packing_type,
+      transporter_id || null,
+      buying_center_id || null,
+      supplier_id || null, // Pass null if undefined
+      purchase_type_id || null,
       order_items
     );
 
