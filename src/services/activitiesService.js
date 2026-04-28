@@ -485,7 +485,6 @@ const createOrUpdateActivityV2 = async (data, user) => {
 
       // Create a new delivery order
 
-      console.log("start_order_items", order_items);
       const orderResult = await deliveryOrderService.createDeliveryOrder(
         truck_no,
         old_truck_no,
@@ -1194,7 +1193,9 @@ const getAllActivitiesV2 = async (search, order_no) => {
         COALESCE(
           json_agg(
             jsonb_build_object(
-              'quantity', f_ord.measurement, 
+              'quantity', f_ord.measurement,
+              'price_per_unit', COALESCE(f_ord.price_per_unit::numeric, 0),
+              'total_amount', COALESCE(f_ord.price_per_unit::numeric, 0) * COALESCE(f_ord.measurement::numeric, 0),
               'name', prod.name,
               'id', prod.id,
               'sku', prod.item_code,
@@ -1530,6 +1531,8 @@ const getActivity = async (delivery_order_id) => {
           json_agg(
             jsonb_build_object(
               'quantity', f_ord.measurement, 
+              'price_per_unit', COALESCE(f_ord.price_per_unit::numeric, 0),
+              'total_amount', COALESCE(f_ord.price_per_unit::numeric, 0) * COALESCE(f_ord.measurement::numeric, 0),
               'name', prod.name,
               'unit', f_ord.unit,
               'transaction_type', f_ord.transaction_type,

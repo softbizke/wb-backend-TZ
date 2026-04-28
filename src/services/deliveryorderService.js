@@ -330,11 +330,12 @@ const createDeliveryOrder = async (
         destination,
         transaction_type,
         packing_id,
+        price_per_unit,
         isactive,
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     console.log("order_items", order_items);
@@ -362,6 +363,7 @@ const createDeliveryOrder = async (
           destination,
           transaction_type,
           packing_id,
+          order.price_per_unit,
         ]);
       } else {
         // Product is already an ID
@@ -376,6 +378,7 @@ const createDeliveryOrder = async (
           destination,
           transaction_type,
           packing_id,
+          order.price_per_unit,
         ]);
       }
     }
@@ -559,8 +562,8 @@ const createDeliveryAndFinishedOrder = async (
     // ✅ Insert finished orders
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
-      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, isactive, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, price_per_unit, isactive, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
     `;
 
     for (const order of order_items) {
@@ -586,6 +589,7 @@ const createDeliveryAndFinishedOrder = async (
           sourceVal,
           destinationVal,
           transactionTypeVal,
+          order.price_per_unit ?? 0,
         ]);
       } else {
         await client.query(insertFinishedOrdersQuery, [
@@ -598,6 +602,7 @@ const createDeliveryAndFinishedOrder = async (
           sourceVal,
           destinationVal,
           transactionTypeVal,
+          order.price_per_unit ?? 0,
         ]);
       }
     }
@@ -769,8 +774,8 @@ const createDeliveryAndFinishedOrderV2 = async (
     // ✅ Insert finished orders
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
-      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, isactive, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, price_per_unit, isactive, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     const sku = null;
@@ -799,6 +804,7 @@ const createDeliveryAndFinishedOrderV2 = async (
           sourceVal,
           destinationVal,
           transactionTypeVal,
+          order.price_per_unit ?? 0,
         ]);
       } else {
         await client.query(insertFinishedOrdersQuery, [
@@ -811,6 +817,7 @@ const createDeliveryAndFinishedOrderV2 = async (
           sourceVal,
           destinationVal,
           transactionTypeVal,
+          order.price_per_unit ?? 0,
         ]);
       }
     }
