@@ -7,6 +7,7 @@ const syncService = require("../services/syncService");
   console.log("Initial sync...");
   await syncService.syncDrivers();
   await syncService.syncBuyingCenters();
+  await syncService.syncWeighbridge();
 })();
 
 let isRunning = false;
@@ -25,6 +26,7 @@ schedule.scheduleJob("0 * * * *", async () => {
   try {
     await syncService.syncDrivers();
     await syncService.syncBuyingCenters();
+    await syncService.syncWeighbridge();
   } catch (error) {
     console.error("Scheduled sync error:", error.message);
   } finally {
