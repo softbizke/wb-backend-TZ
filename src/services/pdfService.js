@@ -8,6 +8,7 @@ const path = require("path");
 const escpos = require("escpos");
 const { USB } = require("escpos-usb");
 const sharp = require("sharp");
+const printerConfig = require("../config/printerConfig");
 
 // Create a connection pool
 const pool = new Pool({
@@ -184,11 +185,11 @@ async function generatePDF(order_no, data, res) {
   } = data;
   const pdfPath = path.join(
     __dirname,
-    `../../public/delivery_order_${order_no}.pdf`
+    `../../public/delivery_order_${order_no}.pdf`,
   );
   const imagePath = path.join(
     __dirname,
-    `../../public/delivery_order_${order_no}.png`
+    `../../public/delivery_order_${order_no}.png`,
   );
 
   const logoURL =
@@ -232,7 +233,7 @@ async function generatePDF(order_no, data, res) {
   doc.text(
     "---------------------- Gate Pass Ticket --------------------",
     20,
-    currentY
+    currentY,
   );
   currentY += 20;
 
@@ -290,7 +291,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[1],
     rowHeight,
-    "center"
+    "center",
   );
   drawCell(
     doc,
@@ -299,7 +300,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[2],
     rowHeight,
-    "center"
+    "center",
   );
   startY += rowHeight;
 
@@ -312,7 +313,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[1],
     rowHeight,
-    "center"
+    "center",
   );
   drawCell(
     doc,
@@ -321,7 +322,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[2],
     rowHeight,
-    "center"
+    "center",
   );
   startY += rowHeight;
 
@@ -333,7 +334,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[1],
     rowHeight,
-    "center"
+    "center",
   );
   drawCell(
     doc,
@@ -342,7 +343,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[2],
     rowHeight,
-    "center"
+    "center",
   );
   startY += rowHeight;
 
@@ -354,7 +355,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[1],
     rowHeight,
-    "center"
+    "center",
   );
   drawCell(
     doc,
@@ -363,7 +364,7 @@ async function generatePDF(order_no, data, res) {
     startY,
     columnWidths[2],
     rowHeight,
-    "center"
+    "center",
   );
   currentY = startY + rowHeight + 10;
 
@@ -398,7 +399,7 @@ async function generatePDF(order_no, data, res) {
         .toFile(imagePath);
 
       // Connect to the EPOS Printer over TCP/IP
-      const device = new escposNetwork("30.30.30.121"); // Replace with your printer’s IP
+      const device = new escposNetwork(printerConfig.IP_ADDRESS);
       const printer = new escpos.Printer(device);
 
       device.open(async function (err) {
@@ -437,56 +438,75 @@ const getprocesseddeliveryorders = async (search) => {
     }
 
     const query = `
-            SELECT 
-                ord.truck_no,
-                ord.trailler_no,
-                ord.order_number,
-                ord.product_type_id,
+      SELECT 
+        ord.truck_no,
+        ord.trailler_no,
+        ord.order_number,
+        ord.offloading_location,
 
-                cust.name AS customer,
-                cust.bp_code AS customer_code,
+        cust.name AS customer,
+        cust.bp_code AS customer_code,
 
-                driv.name AS driver,
-                driv.license_no AS phone,
+        driv.name AS driver,
+        driv.license_no AS phone,
 
-                prodty.name AS product_type,
-                packty.name AS packing_type,
-                finished.measurement AS qty,
+        prodty.name AS product_type,
+        packty.name AS packing_type,
+        finished.measurement AS qty,
+        finished.destination AS destination,
+      
+        act1.tare_weight AS tare_weight,
+        act1.created_at AS tare_time,
+        act1.qty AS net_weight,
+        act1.gross_weight AS gross_weight,
+        act1.sw_at as gross_time,
+        act1.avrg_w AS avrg_weight,
+
+        sup.name AS supplier,
+
+        -- 🏬 Buying Center
+        jsonb_build_object(
+          'id', bc.id,
+          'title', bc.name,
+          'village', bc.village_name,
+          'cotton_type', bc.cotton_type_name
+        ) AS buying_center
               
-                act1.tare_weight AS tare_weight,
-                act1.created_at AS tare_time,
-                act1.qty AS net_weight,
-                act1.gross_weight AS gross_weight,
-                act1.sw_at as gross_time,
-                act1.avrg_w AS avrg_weight,
+      FROM tos_delivery_orders ord
 
-                sup.name AS supplier
-              
-            FROM tos_delivery_orders ord
-            LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
-            LEFT JOIN tos_finished_orders finished ON ord.id = finished.delivery_order_id
-            LEFT JOIN tos_drivers driv ON  ord.driver_id = driv.id
-            LEFT JOIN tos_suppliers sup ON  ord.supplier_id = sup.id
-            LEFT JOIN tos_product prodty ON finished.product_id = prodty.id
-            LEFT JOIN tos_packing_type packty ON   ord.packing_type_id = packty.id
-            LEFT JOIN tos_activities act1 ON ord.id = act1.delivery_order_id  AND act1.activity_type = 10
-            LEFT JOIN tos_activities act2 ON ord.id = act2.delivery_order_id AND act2.activity_type = 20
-            WHERE ord.order_number LIKE $1;
-        `;
+      LEFT JOIN tos_customer cust 
+        ON ord.customer_id = cust.id
+
+      LEFT JOIN tos_finished_orders finished 
+        ON ord.id = finished.delivery_order_id
+
+      LEFT JOIN tos_drivers driv 
+        ON ord.driver_id = driv.id
+
+      LEFT JOIN tos_suppliers sup 
+        ON ord.supplier_id = sup.id
+
+      LEFT JOIN tos_product prodty 
+        ON finished.product_id = prodty.id
+
+      LEFT JOIN tos_packing_type packty 
+        ON ord.packing_type_id = packty.id
+
+      LEFT JOIN tos_buying_center bc 
+        ON ord.buying_center_id = bc.id
+
+      LEFT JOIN tos_activities act1 
+        ON ord.id = act1.delivery_order_id  
+        AND act1.activity_type = 10
+
+      LEFT JOIN tos_activities act2 
+        ON ord.id = act2.delivery_order_id 
+        AND act2.activity_type = 20
+
+      WHERE ord.order_number LIKE $1
+    `;
+
     const { rows } = await pool.query(query, [`%${search}%`]);
-
-    //if rows[0].product_type_id is not null,while proudct_type is null , get the product from tos_product, assing to rows[0].product_type
-    for (let row of rows) {
-      if (row.product_type_id && !row.product_type) {
-        const productQuery = `
-          SELECT name FROM tos_product_type WHERE id = $1;
-        `;
-        const productResult = await pool.query(productQuery, [row.product_type_id]);
-        if (productResult.rows.length > 0) {
-          row.product_type = productResult.rows[0].name;
-        }
-      }
-    }
 
     return rows;
   } catch (err) {

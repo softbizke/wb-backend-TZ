@@ -157,9 +157,9 @@ class SyncService {
         await db.query(
           `
           INSERT INTO tos_buying_center (
-            cms_id, code, name, is_active, updated_at
+            cms_id, code, name, is_active, updated_at, cms_village_id, village_name, cms_cotton_type_id, cotton_type_name
           )
-          VALUES ($1,$2,$3,$4,$5)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
           ON CONFLICT (cms_id)
           DO UPDATE SET
             code = EXCLUDED.code,
@@ -167,7 +167,17 @@ class SyncService {
             is_active = EXCLUDED.is_active,
             updated_at = EXCLUDED.updated_at;
         `,
-          [c.id, c.code, c.name, c.is_active, c.updated_at],
+          [
+            c.id,
+            c.code,
+            c.name,
+            c.is_active,
+            c.updated_at,
+            c.cms_village_id,
+            c.village_name,
+            c.cms_cotton_type_id,
+            c.cotton_type_name,
+          ],
         );
 
         if (!latestTimestamp || c.updated_at > latestTimestamp) {
@@ -195,60 +205,104 @@ class SyncService {
     try {
       const lastSync = await this.getLastSync(SYNC_KEY);
 
-      // 🔥 safety buffer (avoid missing same-second updates)
+      // safety buffer to avoid missing same-second updates
       const safeSince = lastSync
         ? new Date(new Date(lastSync).getTime() - 2000).toISOString()
         : null;
 
       const params = [];
-      let where = `WHERE act.activity_type IN (10,20)`;
 
+      // =========================================
+      // ONLY COMPLETED / PROCESSED ORDERS
+      // =========================================
+      let where = `
+        WHERE
+          act.activity_type IN (10,20)
+          AND act.sw_at IS NOT NULL
+          AND act.qty IS NOT NULL
+          AND act.gross_weight IS NOT NULL
+      `;
+
+      let having = "";
+
+      // =========================================
+      // SYNC ONLY NEW/UPDATED RECORDS
+      // =========================================
       if (safeSince) {
         params.push(safeSince);
-        where += ` AND GREATEST(
-        act.updated_at,
-        COALESCE(MAX(f_ord.updated_at), act.updated_at)
-      ) > $${params.length}`;
+
+        having = `
+          HAVING GREATEST(
+            act.updated_at,
+            COALESCE(MAX(f_ord.updated_at), act.updated_at)
+          ) > $${params.length}
+        `;
       }
 
       const query = `
-      SELECT
-        act.id AS activity_id,
-        act.activity_type,
+        SELECT
+          act.id AS activity_id,
+          act.activity_type,
 
-        --IMPORTANT: unified updated_at (activity + products)
-        GREATEST(
-          act.updated_at,
-          COALESCE(MAX(f_ord.updated_at), act.updated_at)
-        ) AS updated_at,
+          -- unified updated_at
+          GREATEST(
+            act.updated_at,
+            COALESCE(MAX(f_ord.updated_at), act.updated_at)
+          ) AS updated_at,
 
-        act.created_at,
+          act.created_at,
 
-        ord.id AS delivery_order_id,
-        ord.order_number,
-        ord.truck_no,
+          ord.id AS delivery_order_id,
+          ord.order_number,
+          ord.truck_no,
 
-        bc.id AS buying_center_id,
-        bc.cms_id AS buying_center_cms_id,
-        bc.name AS buying_center_name,
+          bc.id AS buying_center_id,
+          bc.cms_id AS buying_center_cms_id,
+          bc.name AS buying_center_name,
 
-        act.gross_weight,
-        act.qty AS net_weight,
+          act.gross_weight,
+          act.qty AS net_weight,
 
-        COALESCE(SUM((NULLIF(f_ord.measurement, '')::numeric)), 0) AS total_bags,
-        COALESCE(SUM((NULLIF(f_ord.measurement, '')::numeric) * f_ord.price_per_unit), 0) AS total_amount
+          -- bags total
+          COALESCE(
+            SUM(NULLIF(f_ord.measurement, '')::numeric),
+            0
+          ) AS total_bags,
 
-      FROM tos_activities act
-      JOIN tos_delivery_orders ord ON ord.id = act.delivery_order_id
-      LEFT JOIN tos_buying_center bc ON bc.id = ord.buying_center_id
-      LEFT JOIN tos_finished_orders f_ord ON f_ord.delivery_order_id = ord.id
+          -- amount total
+          COALESCE(
+            SUM(
+              (NULLIF(f_ord.measurement, '')::numeric)
+              * COALESCE(f_ord.price_per_unit, 0)
+            ),
+            0
+          ) AS total_amount
 
-      ${where}
+        FROM tos_activities act
 
-      GROUP BY act.id, ord.id, bc.id
-      ORDER BY updated_at ASC
-      LIMIT 500
-    `;
+        INNER JOIN tos_delivery_orders ord
+          ON ord.id = act.delivery_order_id
+
+        LEFT JOIN tos_buying_center bc
+          ON bc.id = ord.buying_center_id
+
+        LEFT JOIN tos_finished_orders f_ord
+          ON f_ord.delivery_order_id = ord.id
+
+        ${where}
+
+        GROUP BY
+          act.id,
+          ord.id,
+          bc.id
+
+        ${having}
+
+        ORDER BY
+          updated_at ASC
+
+        LIMIT 500
+      `;
 
       const res = await db.query(query, params);
       const rows = res.rows;
@@ -258,9 +312,9 @@ class SyncService {
         return;
       }
 
-      // =============================
+      // =========================================
       // SEND IN CHUNKS
-      // =============================
+      // =========================================
       const chunkSize = 100;
 
       for (let i = 0; i < rows.length; i += chunkSize) {
@@ -271,7 +325,7 @@ class SyncService {
           { data: chunk },
           {
             headers: {
-              Authorization: "Bearer " + API_KEY,
+              Authorization: `Bearer ${API_KEY}`,
               Accept: "application/json",
             },
             timeout: 20000,
@@ -279,10 +333,10 @@ class SyncService {
         );
       }
 
-      // =============================
-      // UPDATE LAST SYNC (ONLY AFTER SUCCESS)
-      // =============================
-      const latestTimestamp = rows[rows.length - 1].updated_at;
+      // =========================================
+      // UPDATE LAST SYNC ONLY AFTER SUCCESS
+      // =========================================
+      const latestTimestamp = rows[rows.length - 1]?.updated_at;
 
       if (latestTimestamp) {
         await this.setLastSync(SYNC_KEY, latestTimestamp);

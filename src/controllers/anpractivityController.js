@@ -9,7 +9,7 @@ const getCamerasActivityPoint =
 
 const postnprActivitylog = async (req, res) => {
   // Check if the body is in JSON format or nested format
-  console.log("Camera Type", req.query.camera_type);
+  console.log("Camera Type 11111111#########", req.query.camera_type);
   const cameraType = req.query.camera_type || 1;
   let reg_no, camera_id, snap_time;
   let is_unlicensed = false;

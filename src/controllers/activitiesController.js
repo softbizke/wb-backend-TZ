@@ -20,7 +20,7 @@ const createOrUpdateActivityType = async (req, res) => {
     const result = await activities.createOrUpdateActivityType(
       name,
       type,
-      isactive
+      isactive,
     );
 
     // Return response based on the result
@@ -102,7 +102,7 @@ const createOrUpdateActivityPoint = async (req, res) => {
       name,
       address,
       isactive,
-      camera_ids
+      camera_ids,
     );
 
     if (result.success) {
@@ -152,7 +152,7 @@ const createOrUpdateActivity = async (req, res) => {
 
     const activitiesperfomed = await activities.getTruckOnWb(
       truck_no,
-      weighbridge_id
+      weighbridge_id,
     );
 
     console.log("Activities performed:", activitiesperfomed);
@@ -167,7 +167,7 @@ const createOrUpdateActivity = async (req, res) => {
 
     const result = await activities.createOrUpdateActivityV2(
       req.body,
-      req.user
+      req.user,
     );
 
     if (result.success) {
@@ -235,14 +235,14 @@ const getAllActivityPoint = async (req, res) => {
 
 const getAllActivities = async (req, res) => {
   try {
-    const { truck, order_no } = req.query;
+    const { truck, order_no, mode } = req.query;
     console.log(truck, order_no);
 
     const activitiesperfomed = await activities.getAllActivitiesV2(
       truck,
-      order_no
+      order_no,
+      mode ?? "completed",
     );
-    
 
     res.status(200).json({
       success: true,
@@ -296,14 +296,13 @@ const getActivity = async (req, res) => {
 const getTruckActivities = async (req, res) => {
   try {
     const { search, weighbridge_id, editing } = req.query;
-    const weighbridgeData = await activities.getWeighbridgePoint(
-      weighbridge_id
-    );
+    const weighbridgeData =
+      await activities.getWeighbridgePoint(weighbridge_id);
 
     const activitiesperfomed = await activities.getTruckActivities(
       search,
       weighbridge_id,
-      editing
+      editing,
     );
 
     console.log("Activities performed:", activitiesperfomed);
@@ -341,12 +340,12 @@ const processWeighbridgeActivity = async (req, res) => {
 
     console.log("weighbridge_id", weighbridge_id);
 
-    const weighbridgeData = await activities.getWeighbridgePoint(
-      weighbridge_id
-    );
+    const weighbridgeData =
+      await activities.getWeighbridgePoint(weighbridge_id);
+
     const allSnapshots = [];
     const cameraIPs = [];
-    console.log("Weighbridge Data:", weighbridgeData); 
+    console.log("Weighbridge Data:", weighbridgeData);
 
     for (const camera_id of weighbridgeData.camera_ids) {
       const cameraIndex = weighbridgeData.camera_ids.indexOf(camera_id);
@@ -385,7 +384,7 @@ const processWeighbridgeActivity = async (req, res) => {
 
     const truckActivities = await activities.getTruckActivities(
       null,
-      weighbridge_id
+      weighbridge_id,
     );
     const latestTruck =
       truckActivities.length > 0 ? truckActivities[0].truck_no : null;

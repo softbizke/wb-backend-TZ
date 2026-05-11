@@ -73,39 +73,27 @@ const createOrUpdateProductType = async (name, isactive, packing_type_id) => {
   }
 };
 
-const createOrUpdateProduct = async (name, isactive, productTypeName) => {
+const createOrUpdateProduct = async (name, isactive) => {
   try {
-    const checkProductTypeQuery =
-      "SELECT id FROM tos_product_type WHERE id = $1";
-    const productTypeResult = await pool.query(checkProductTypeQuery, [
-      productTypeName,
-    ]);
-
-    if (productTypeResult.rows.length === 0) {
-      return { success: false, message: "Product type not found" };
-    }
-
-    const productTypeId = productTypeResult.rows[0].id;
-
     const checkProductQuery =
       "SELECT * FROM tos_product WHERE LOWER(name) = LOWER($1)";
     const productResult = await pool.query(checkProductQuery, [name]);
 
     if (productResult.rows.length === 0) {
       const insertQuery = `
-        INSERT INTO tos_product (name, isactive, product_type_id)
-        VALUES ($1, $2, $3)
+        INSERT INTO tos_product (name, isactive)
+        VALUES ($1, $2)
       `;
-      await pool.query(insertQuery, [name, isactive, productTypeId]);
+      await pool.query(insertQuery, [name, isactive]);
 
       return { success: true, message: "Product created successfully" };
     } else {
       const updateQuery = `
         UPDATE tos_product
-        SET isactive = $1, product_type_id = $2
-        WHERE LOWER(name) = LOWER($3)
+        SET isactive = $1
+        WHERE LOWER(name) = LOWER($2)
       `;
-      await pool.query(updateQuery, [isactive, productTypeId, name]);
+      await pool.query(updateQuery, [isactive, name]);
 
       return { success: true, message: "Product updated successfully" };
     }
@@ -149,22 +137,15 @@ const getAllProducts = async (search) => {
         prod.id,
         prod.name,
         prod.isactive,
-        typ.id AS product_type_id,
-        typ.name AS product_type_name,
-        pack.id AS packing_type_id,
-        pack.name AS packing_type_name
+        prod.item_code
       FROM tos_product prod
-      LEFT JOIN tos_product_type typ 
-        ON typ.id = prod.product_type_id
-      LEFT JOIN tos_packing_type pack 
-        ON pack.id = typ.packing_type_id
     `;
 
     const queryParams = [];
 
     // Add WHERE clause for search
     if (search) {
-      query += " WHERE prod.name ILIKE $1 OR typ.name ILIKE $1 OR pack.name ILIKE $1";
+      query += " WHERE prod.name ILIKE $1 OR prod.item_code ILIKE $1";
       queryParams.push(`%${search}%`);
     }
 
@@ -180,35 +161,28 @@ const getAllProducts = async (search) => {
   }
 };
 
-
 const getOrCreateProductByCode = async (data) => {
   try {
-    let { name, item_code, product_type_id, isactive } = data;
-    product_type_id = 1;
+    let { name, id, isactive } = data;
     //find customer by item_code
     let query = "SELECT id FROM tos_product";
     const queryParams = [];
-    if (item_code) {
-      query += " WHERE item_code ILIKE $1";
-      queryParams.push(`%${item_code}%`);
+    if (id) {
+      query += " WHERE id = $1";
+      queryParams.push(id);
     }
     let result = await pool.query(query, queryParams);
     //if customer doesn't exist create one
     if (result.rows.length > 0) {
       return result.rows[0].id;
     }
-    //insert the new customer to tos_table data(item_code,name, product_type_id, isactive:true)
+    //insert the new customer to tos_table data(item_code,name, isactive:true)
     const insertQuery = `
-    INSERT INTO tos_product (name, isactive, product_type_id, item_code)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO tos_product (name, isactive)
+    VALUES ($1, $2)
     RETURNING id
   `;
-    const newresult = await pool.query(insertQuery, [
-      name,
-      isactive,
-      product_type_id,
-      item_code,
-    ]);
+    const newresult = await pool.query(insertQuery, [name, isactive]);
 
     //return customer id
     return newresult.rows[0].id;

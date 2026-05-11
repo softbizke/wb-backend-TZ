@@ -8,6 +8,7 @@ const escposNetwork = require("escpos-network");
 const QRCode = require("qrcode");
 const { DateTime } = require("luxon");
 const { getUser } = require("../services/usersService");
+const printerConfig = require("../config/printerConfig");
 
 async function generatePDFHandler(req, res) {
   const { order_no } = req.query;
@@ -115,7 +116,7 @@ async function generateReceiptHandler(req, res) {
   await autoPrintReceipt(order_no, res, req.user);
 }
 async function autoPrintReceipt(order_no, res, auth) {
-  try { 
+  try {
     const user = await getUser(auth.id);
 
     const orderData = await PDFg.getprocesseddeliveryorders(order_no);
@@ -142,8 +143,11 @@ async function autoPrintReceipt(order_no, res, auth) {
       customer_code,
       driver,
       qty,
+      destination,
       phone,
       avrg_weight,
+      buying_center,
+      offloading_location,
     } = orderData[0];
     // Format date
     const formatDate = (date) => {
@@ -158,11 +162,12 @@ async function autoPrintReceipt(order_no, res, auth) {
     // ? net_weight / qty
     // : null;
     const options = { encoding: "GB18030" /* default */ };
-    const device = new escposNetwork("30.30.30.121"); // Replace with your printer’s IP
+    const device = new escposNetwork(printerConfig.IP_ADDRESS);
     const printer = new escpos.Printer(device, options);
     const quantity = qty ? qty : net_weight ? net_weight : null;
 
     //printer
+
     sharp(logoPath)
       .resize({ height: 150 })
       .toFile(resizedPath)
@@ -176,16 +181,16 @@ async function autoPrintReceipt(order_no, res, auth) {
               .align("CT")
               .style("B")
               .size(0, 0)
-              .text("KITUI FLOUR MILLS lTD")
+              // .text("ALLIANCE GINNERY LTD")
               .style("NORMAL")
-              .text("PO BOX 42160 TEL:041290647, 041290303, MOMBASA")
+              .text("P.O. BOX 11074, MWANZA, TANZANIA")
               .text(`Date: ${DateTime.now().toFormat("dd-LL-yyyy HH:mm")}`)
 
               .text("Phone: +254 700 000 000")
               .newLine()
               .align("CT")
               .style("B")
-              .text("GATE PASS TICKET")
+              .text("WEIGHBRIDGE PASS TICKET")
               .style("NORMAL")
               .drawLine()
 
@@ -194,27 +199,35 @@ async function autoPrintReceipt(order_no, res, auth) {
               .style("NORMAL")
               .text(`Ticket No: ${order_no}`)
               .drawLine()
-              .newLine()
+              .newLine();
 
-              //customer details
-              .align("LT")
-              .style("B")
-              .text(customer?"CUSTOMER DETAILS":supplier?"SUPPLIER DETAILS":"PARTY DETAILS")
-              .drawLine()
-              .style("NORMAL")
-              .text(`${customer ?? supplier ?? "N/A"}`)
-              .drawLine()
-              .newLine()
+            // buying center details
+            if (buying_center?.id) {
+              printer
+                .align("LT")
+                .style("B")
+                .text("BUYING CENTER DETAILS")
+                .drawLine()
+                .style("NORMAL")
+                .text(`Zone : ${buying_center.village ?? "N/A"}`)
+                .text(`Center : ${buying_center.title ?? "N/A"}`)
+                .text(
+                  `Cotton Type : ${buying_center.cotton_type ? (buying_center.cotton_type.toLowerCase() === "organic" ? "01" : "02") : "N/A"}`,
+                )
+                .drawLine()
+                .newLine();
+            }
 
-              //truck details
+            //truck details
+            printer
               .align("LT")
               .style("B")
               .text("TRUCK DETAILS")
               .drawLine()
               .style("NORMAL")
               .text(`Truck No: ${truck_no}`)
-              .text(`Driver : N/A`)
-              .text(`Contact : N/A`)
+              .text(`Driver : ${driver ?? "N/A"}`)
+              // .text(`Contact : N/A`)
               .newLine()
               .newLine()
               //product details
@@ -225,11 +238,11 @@ async function autoPrintReceipt(order_no, res, auth) {
               .align("LT")
               .tableCustom(
                 [
-                  { text: "PRODUCT", align: "LEFT", width: 0.6 },
-                  { text: "TYPE", align: "CENTER", width: 0.2 },
+                  { text: "PRODUCT", align: "LEFT", width: 0.8 },
+                  // { text: "TYPE", align: "CENTER", width: 0.2 },
                   { text: "QTY", align: "RIGHT", width: 0.2 },
                 ],
-                { encoding: "cp857", size: [1, 1] } // Optional
+                { encoding: "cp857", size: [1, 1] }, // Optional
               )
               .drawLine()
               .style("NORMAL")
@@ -238,36 +251,40 @@ async function autoPrintReceipt(order_no, res, auth) {
                   {
                     text: product_type ?? "N/A",
                     align: "LEFT",
-                    width: 0.6,
+                    width: 0.8,
                   },
+                  // {
+                  //   text: "BAGS",
+                  //   align: "CENTER",
+                  //   width: 0.2,
+                  // },
                   {
-                    text: packing_type ?? "N/A",
-                    align: "CENTER",
+                    text: parseInt(quantity ?? "") ?? "NA",
+                    align: "RIGHT",
                     width: 0.2,
                   },
-                  { text: parseInt(quantity ?? "") ?? "NA", align: "RIGHT", width: 0.2 },
                 ],
-                { encoding: "cp857", size: [1, 1] } // Optional
+                { encoding: "cp857", size: [1, 1] }, // Optional
               )
               .newLine()
               .newLine()
               //avarage weight
-              .align("LT")
-              .style("B")
-              .text("AVERAGE WEIGHT")
-              .drawLine()
-              .style("NORMAL")
-              .text(
-                `${
-                  avrg
-                    ? `Average Weight: ${
-                        Number.parseFloat(avrg).toFixed(2) ?? 0
-                      } KG`
-                    : "N/A"
-                }`
-              )
-              .newLine()
-              .newLine()
+              // .align("LT")
+              // .style("B")
+              // .text("AVERAGE WEIGHT")
+              // .drawLine()
+              // .style("NORMAL")
+              // .text(
+              //   `${
+              //     net_weight && qty
+              //       ? `Average Weight: ${Number(
+              //           Number.parseFloat(net_weight) / Number.parseFloat(qty),
+              //         ).toFixed(2)} KG`
+              //       : "N/A"
+              //   }`,
+              // )
+              // .newLine()
+              // .newLine()
               //weight details
               .align("LT")
               .style("B")
@@ -292,22 +309,194 @@ async function autoPrintReceipt(order_no, res, auth) {
                 net_weight ? formatDate(gross_time) : "-",
               ])
               .drawLine()
-
+              //customer details
+              .newLine()
+              .newLine()
+              .align("LT")
+              .style("B")
+              .text("MORE DETAILS")
+              .drawLine()
+              .style("NORMAL")
+              .text(`Destination:  ${destination ?? "N/A"}`)
+              .text(
+                `${customer ? "Customer" : supplier ? "Supplier" : "Party"}:  ${customer ?? supplier ?? "N/A"}`,
+              )
+              .drawLine()
               .align("CT")
-              .text("Scan QR Code for Order Details") // ✅ Added text above QR Code
-              .qrimage(order_no, function (err) {
-                // ✅ Generate QR Code with Order No
-                if (err) {
-                  console.error("Error generating QR Code:", err);
-                }
-                printer
-                  .newLine()
-                  .align("CT")
-                  .text(`Printed by: ${user.first_name} ${user.last_name}`)
-                  .newLine()
-                  .cut()
-                  .close();
-              });
+              .newLine()
+              .newLine()
+              .align("LT")
+              .style("B")
+              .text("OFFLOADING CONFIRMATION")
+              .drawLine()
+              .style("NORMAL")
+              .newLine()
+              .newLine()
+              .tableCustom(
+                [
+                  { text: "Product", align: "LEFT", width: 0.45 },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+              .newLine()
+
+              .tableCustom(
+                [
+                  { text: "Grade Type", align: "LEFT", width: 0.45 },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+              .newLine()
+
+              .tableCustom(
+                [
+                  { text: "Location", align: "LEFT", width: 0.45 },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+              .newLine()
+
+              .tableCustom(
+                [
+                  { text: "Vehicle Reg. No", align: "LEFT", width: 0.45 },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+              .newLine()
+
+              .tableCustom(
+                [
+                  {
+                    text: "Qty Offloaded (Lorry Bags)",
+                    align: "LEFT",
+                    width: 0.45,
+                  },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+
+              .tableCustom(
+                [
+                  {
+                    text: "Total Qty (Trailer Bags)",
+                    align: "LEFT",
+                    width: 0.45,
+                  },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+
+              .tableCustom(
+                [
+                  {
+                    text: "Total Qty Offloaded",
+                    align: "LEFT",
+                    width: 0.45,
+                  },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+              .newLine()
+
+              .tableCustom(
+                [
+                  {
+                    text: "Time Offloaded",
+                    align: "LEFT",
+                    width: 0.45,
+                  },
+                  {
+                    text: "Hrs:_____ Mins:_____",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+              .newLine()
+
+              .tableCustom(
+                [
+                  {
+                    text: "Stores Signature",
+                    align: "LEFT",
+                    width: 0.45,
+                  },
+                  {
+                    text: "________________________",
+                    align: "RIGHT",
+                    width: 0.55,
+                  },
+                ],
+                { encoding: "cp857", size: [1, 1] },
+              )
+              .newLine()
+              .newLine()
+              .drawLine()
+              .newLine()
+              .align("CT")
+              .text(`Printed by: ${user.first_name} ${user.last_name}`)
+              .newLine()
+              .cut()
+              .close();
+
+            // .text("Scan QR Code for Order Details") // ✅ Added text above QR Code
+            // .qrimage(order_no, function (err) {
+            //   // Generate QR Code with Order No
+            //   if (err) {
+            //     console.error("Error generating QR Code:", err);
+            //   }
+            //   printer
+            //     .newLine()
+            //     .align("CT")
+            //     .text(`Printed by: ${user.first_name} ${user.last_name}`)
+            //     .newLine()
+            //     .cut()
+            //     .close();
+            // });
           });
         });
       });

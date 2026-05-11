@@ -32,26 +32,24 @@ const createOrUpdateProductType = async (req, res) => {
 };
 
 const createOrUpdateProduct = async (req, res) => {
-  const { name, isactive, product_type } = req.body;
+  const { name, isactive } = req.body;
 
   // Validate the input fields
-  if (!name || typeof isactive !== "boolean" || !product_type) {
+  if (!name || typeof isactive !== "boolean") {
     return res.status(400).json({
       success: false,
-      message: "Name, isactive status, and product_type are required",
+      message: "Name and isactive status are required",
     });
   }
 
-  // Convert product name and product type name to uppercase
+  // Convert product name to uppercase
   const productNameUpper = name.toUpperCase();
-  //const productTypeNameUpper = product_type_name.toUpperCase();
 
   try {
     // Call the service function to either create or update the product
     const result = await products.createOrUpdateProduct(
       productNameUpper,
-      isactive,
-      product_type
+      isactive
     );
 
     // Return response based on the result

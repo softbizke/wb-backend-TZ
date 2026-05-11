@@ -4,16 +4,14 @@ const { v4: uuidv4 } = require("uuid"); // Import the uuid library
 const createDeliveryOrder = async (req, res) => {
   const {
     truck_no,
+    old_truck_no,
     trailer_no,
     customer,
     driver,
     measurement,
-    product_type,
     packing_type,
-    vessel,
     do_no,
     activity_check = 0,
-    wheat_type_id,
     order_type = null,
     order_items = [],
     transporter_id,
@@ -22,23 +20,19 @@ const createDeliveryOrder = async (req, res) => {
     purchase_type_id,
     transaction_type,
     source,
-    destination
-
+    destination,
+    packing_id,
+    offloading_location,
   } = req.body;
 
+  // console.log("REQ BODY", req.body);
+
   // Validate the input fields
-  if (
-    !truck_no ||
-    !customer ||
-    !product_type ||
-    !packing_type ||
-    !do_no ||
-    !vessel
-  ) {
+  if (!truck_no || !customer || !packing_type || !do_no) {
     return res.status(400).json({
       success: false,
       message:
-        "truck_no, customer, product_type, vessel,do_no, and packing_type are required",
+        "truck_no, customer, do_no, and packing_type are required",
     });
   }
 
@@ -46,16 +40,14 @@ const createDeliveryOrder = async (req, res) => {
     // Call the service function to either create or update the delivery order
     const result = await deliveryOrders.createDeliveryOrder(
       truck_no,
+      old_truck_no,
       trailer_no,
       customer,
       driver,
       measurement,
-      product_type,
       packing_type,
-      vessel,
       do_no,
       activity_check,
-      wheat_type_id,
       order_type,
       order_items,
       transporter_id,
@@ -64,12 +56,18 @@ const createDeliveryOrder = async (req, res) => {
       purchase_type_id,
       transaction_type,
       source,
-      destination
+      destination,
+      packing_id,
+      offloading_location,
     );
 
     // Return response based on the result
     if (result.success) {
-      return res.status(200).json({ success: true, message: result.message });
+      return res.status(200).json({
+        success: true,
+        message: result.message,
+        orderNumber: result.orderNumber,
+      });
     } else {
       return res.status(409).json({ success: false, message: result.message });
     }
@@ -94,10 +92,10 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       supplier_id,
       // packing_type,
       order_items,
-      transporter_id, 
+      transporter_id,
       buying_center_id,
       purchase_type_id,
-      
+      offloading_location,
     } = req.body;
 
     console.log("ORD", req.body);
@@ -119,13 +117,14 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       customer_id,
       driver_id || null,
       measurement || 0, // Default to 0 if undefined
-      product_type || null, // Pass null if undefined
+      // product_type || null, // Pass null if undefined
       1, //packing_type,
       transporter_id || null,
       buying_center_id || null,
       supplier_id || null, // Pass null if undefined
       purchase_type_id || null,
-      order_items
+      offloading_location || null,
+      order_items,
     );
 
     // Return the result
@@ -165,7 +164,7 @@ const updateDeliveryOrderController = async (req, res) => {
     // Call the service function to update the delivery order
     const result = await deliveryOrders.updateDeliveryOrder(
       order_number,
-      isactive
+      isactive,
     );
 
     // Return response based on the result from the service
@@ -204,7 +203,7 @@ const getAllDeliveryorders = async (req, res) => {
       customer,
       created_at,
       isactive,
-      limit
+      limit,
     );
 
     // Send the response with the filtered customer types
@@ -224,8 +223,6 @@ const getAllDeliveryorders = async (req, res) => {
 };
 
 //get summary stats
-
-
 
 module.exports = {
   createDeliveryOrder,

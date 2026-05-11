@@ -185,7 +185,7 @@ const createOrUpdateActivity = async (
   trailler_no,
   customer_id,
   driver_id,
-  product_type_id,
+  /* product_type_id, */
   packing_type_id,
   vessel_id,
   do_no,
@@ -202,13 +202,12 @@ const createOrUpdateActivity = async (
       let activity_check = 1;
       const orderResult = await deliveryOrderService.createDeliveryOrder(
         truck_no,
+        null,
         trailler_no,
         customer_id,
         driver_id,
         weightwb1,
-        product_type_id,
         packing_type_id,
-        vessel_id,
         do_no,
         activity_check,
       );
@@ -451,7 +450,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
     customer_id,
     stock_transfer_code,
     driver_id,
-    product_type_id,
+    /* product_type_id, */
     packing_type_id,
     vessel_id,
     do_no,
@@ -461,7 +460,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
     avrg_weight,
     status,
     order_type,
-    order_items,
+    order_items = [],
     transporter_id,
     buying_center_id,
     supplier_id,
@@ -470,6 +469,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
     source,
     destination,
     packing_id,
+    offloading_location,
   } = data;
   let activity_type_name;
   let qty;
@@ -492,12 +492,9 @@ const createOrUpdateActivityV2 = async (data, user) => {
         customer_id,
         driver_id,
         weightwb1,
-        product_type_id,
         packing_type_id,
-        vessel_id,
         do_no,
         activity_check,
-        wheat_type_id,
         order_type,
         order_items,
         transporter_id,
@@ -508,6 +505,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         source,
         destination,
         packing_id,
+        offloading_location,
       );
 
       if (!orderResult.success) {
@@ -677,7 +675,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         isactive: isActive,
         customer_id,
         driver_id,
-        product_type_id,
+        // product_type_id,
         packing_type_id,
         vessel_id,
         do_no,
@@ -688,6 +686,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         buying_center_id,
         supplier_id,
         purchase_type_id,
+        offloading_location,
       };
 
       const setClauses = [];
@@ -1093,7 +1092,7 @@ const getAllActivities = async (search, order_no) => {
     throw new Error("Server error");
   }
 };
-const getAllActivitiesV2 = async (search, order_no) => {
+const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
   try {
     const queryParams = [];
     const whereClauses = [];
@@ -1112,7 +1111,14 @@ const getAllActivitiesV2 = async (search, order_no) => {
     // Final WHERE clause
     // const whereSQL = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
-    const baseCondition = `act10.sw_at IS NOT NULL`; // Ensure we only get orders that have a second weight recorded
+    // const baseCondition = `act10.sw_at IS NOT NULL`; // Ensure we only get orders that have a second weight recorded
+    let baseCondition = "";
+
+    if (mode === "measurement") {
+      baseCondition = `ord.activitycheck = 1`;
+    } else {
+      baseCondition = `ord.activitycheck = 2`;
+    }
 
     const whereSQL = whereClauses.length
       ? `WHERE ${whereClauses.join(" AND ")} AND ${baseCondition}`
@@ -1125,7 +1131,7 @@ const getAllActivitiesV2 = async (search, order_no) => {
         ord.truck_no,
         ord.trailler_no,
         ord.vessel_id,
-        ord.product_type_id,
+        -- ord.product_type_id,
         ord.old_truck_no,
         ord.isactive,
         ord.do_no,
@@ -1169,7 +1175,9 @@ const getAllActivitiesV2 = async (search, order_no) => {
         -- 🏬 Buying Center
         jsonb_build_object(
           'id', bc.id,
-          'title', bc.name
+          'title', bc.name,
+          'village', bc.village_name,
+          'cotton_type', bc.cotton_type_name
         ) AS buying_center,
 
         -- 💰 Purchase Type
@@ -1179,10 +1187,10 @@ const getAllActivitiesV2 = async (search, order_no) => {
         ) AS purchase_type,
 
         -- ⚖️ Product Type and Packing Type
-        jsonb_build_object(
-          'id', prodty.id,
-          'name', prodty.name
-        ) AS product_type,
+        -- jsonb_build_object(
+        --   'id', prodty.id,
+        --   'name', prodty.name
+        -- ) AS product_type,
 
         jsonb_build_object(
           'id', packty.id,
@@ -1199,7 +1207,6 @@ const getAllActivitiesV2 = async (search, order_no) => {
               'name', prod.name,
               'id', prod.id,
               'sku', prod.item_code,
-              'product_type_id', prod.product_type_id,
               'unit', f_ord.unit,
               'transaction_type', f_ord.transaction_type,
               'source', f_ord.source,
@@ -1290,7 +1297,7 @@ const getAllActivitiesV2 = async (search, order_no) => {
       LEFT JOIN tos_transporter trans ON ord.transporter_id = trans.id
       LEFT JOIN tos_buying_center bc ON ord.buying_center_id = bc.id
       LEFT JOIN tos_purchase_type pt ON ord.purchase_type_id = pt.id
-      LEFT JOIN tos_product_type prodty ON ord.product_type_id = prodty.id
+      -- LEFT JOIN tos_product_type prodty ON ord.product_type_id = prodty.id
       LEFT JOIN tos_packing_type packty ON ord.packing_type_id = packty.id
 
       -- Finished Orders + Product
@@ -1301,7 +1308,8 @@ const getAllActivitiesV2 = async (search, order_no) => {
 
       GROUP BY 
         ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, pt.id,
-        prodty.id, packty.id, act10.id, act20.id,
+        -- prodty.id,
+        packty.id, act10.id, act20.id,
         sw_ap.id, fw_ap.id, fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
 
       ORDER BY 
@@ -1460,7 +1468,7 @@ const getActivity = async (delivery_order_id) => {
         ord.truck_no, 
         ord.trailler_no,
         ord.vessel_id,
-        ord.product_type_id,
+        -- ord.product_type_id,
         ord.old_truck_no,
         ord.isactive,
         ord.do_no,
@@ -1516,10 +1524,10 @@ const getActivity = async (delivery_order_id) => {
         ) AS purchase_type,
 
         -- ⚖️ Product Type and Packing Type
-        jsonb_build_object(
-          'id', ptype.id,
-          'name', ptype.name
-        ) AS product_type,
+        -- jsonb_build_object(
+        --   'id', ptype.id,
+        --   'name', ptype.name
+        -- ) AS product_type,
 
         jsonb_build_object(
           'id', packtype.id,
@@ -1588,7 +1596,7 @@ const getActivity = async (delivery_order_id) => {
       LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
       LEFT JOIN tos_packing_type vprod ON vprod.id = f_ord.packing_type_id
 
-      LEFT JOIN tos_product_type ptype ON ptype.id = ord.product_type_id
+      -- LEFT JOIN tos_product_type ptype ON ptype.id = ord.product_type_id
       LEFT JOIN tos_packing_type packtype ON packtype.id = ord.packing_type_id
       LEFT JOIN tos_vessel vessel ON vessel.id = ord.vessel_id
       LEFT JOIN tos_wheat_type wtype ON wtype.id = ord.wheat_type_id
@@ -1613,7 +1621,8 @@ const getActivity = async (delivery_order_id) => {
     query += `
       GROUP BY 
         ord.id, cust.id, drv.id, supp.id, transp.id, bc.id, pt.id, 
-        ptype.id, packtype.id, act10.id, act20.id,
+        -- ptype.id,
+        packtype.id, act10.id, act20.id,
         fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
 
       ORDER BY 

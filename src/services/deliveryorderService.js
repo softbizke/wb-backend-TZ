@@ -20,12 +20,12 @@ const createDeliveryOrder = async (
   customer_name,
   driver_id,
   measurement,
-  product_type_id,
+  /* product_type_id, */
   packing_type_id,
-  vessel,
+  // vessel,
   do_no,
   activity_check = 0,
-  wheat_type_id,
+  // wheat_type_id,
   order_type = null,
   order_items = [],
   transporter_id,
@@ -36,14 +36,20 @@ const createDeliveryOrder = async (
   source,
   destination,
   packing_id,
+  offloading_location,
 ) => {
   const client = await pool.connect(); // Get a database client
   try {
     await client.query("BEGIN"); // Start a transaction
 
     // Convert truck_no and trailler_no to uppercase if provided
-    const truckNoUpperCase = truck_no ? truck_no.toUpperCase() : null;
-    const traillerNoUpperCase = trailler_no ? trailler_no.toUpperCase() : null;
+    const truckNoUpperCase = truck_no ? truck_no.toUpperCase().trim() : null;
+    const traillerNoUpperCase = trailler_no
+      ? trailler_no.toUpperCase().trim()
+      : null;
+    const oldTruckNoUpperCase = old_truck_no
+      ? old_truck_no.toUpperCase().trim()
+      : null;
 
     let customerId = null;
     if (customer_name) {
@@ -57,11 +63,6 @@ const createDeliveryOrder = async (
         await client.query("ROLLBACK");
         return { success: false, message: "Customer not found or inactive" };
       }
-      if (customerResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Customer not found or inactive" };
-      }
-
       customerId = customerResult.rows[0].id;
     }
 
@@ -79,39 +80,21 @@ const createDeliveryOrder = async (
       driverId = driverResult.rows[0].id; // Set driverId if driver exists
     }
 
-    let vesselId = null;
-    if (vessel) {
-      const checkVesselQuery =
-        "SELECT * FROM tos_vessel WHERE id = $1 AND isactive = true";
-      const vesselResult = await client.query(checkVesselQuery, [vessel]);
+    // let vesselId = null;
+    // if (vessel) {
+    //   const checkVesselQuery =
+    //     "SELECT * FROM tos_vessel WHERE id = $1 AND isactive = true";
+    //   const vesselResult = await client.query(checkVesselQuery, [vessel]);
 
-      if (vesselResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Vessel not found or inactive" };
-      }
+    //   if (vesselResult.rows.length === 0) {
+    //     await client.query("ROLLBACK");
+    //     return { success: false, message: "Vessel not found or inactive" };
+    //   }
 
-      vesselId = vesselResult.rows[0].id; // Set vesselId if vessel exists
-    }
+    //   vesselId = vesselResult.rows[0].id; // Set vesselId if vessel exists
+    // }
 
-    let validProductId = null;
-    if (product_type_id) {
-      const checkProductQuery =
-        "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true";
-      const productResult = await client.query(checkProductQuery, [
-        product_type_id,
-      ]);
-
-      if (productResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Product not found or inactive" };
-      }
-      if (productResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Product not found or inactive" };
-      }
-
-      validProductId = productResult.rows[0].id;
-    }
+    // product_type_id no longer used
 
     let validPackingTypeId = null;
     if (packing_type_id) {
@@ -125,33 +108,28 @@ const createDeliveryOrder = async (
         await client.query("ROLLBACK");
         return { success: false, message: "Packing not found or inactive" };
       }
-      if (packingResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Packing not found or inactive" };
-      }
-
       validPackingTypeId = packingResult.rows[0].id;
     }
 
-    let validWheatTypeId = null;
-    if (wheat_type_id) {
-      const checkWheatTypeQuery =
-        "SELECT * FROM tos_wheat_type WHERE id = $1 AND status = true";
-      const wheatTypeResult = await client.query(checkWheatTypeQuery, [
-        wheat_type_id,
-      ]);
+    // let validWheatTypeId = null;
+    // if (wheat_type_id) {
+    //   const checkWheatTypeQuery =
+    //     "SELECT * FROM tos_wheat_type WHERE id = $1 AND status = true";
+    //   const wheatTypeResult = await client.query(checkWheatTypeQuery, [
+    //     wheat_type_id,
+    //   ]);
 
-      if (wheatTypeResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Wheat Type not found or inactive" };
-      }
-      if (wheatTypeResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Wheat Type not found or inactive" };
-      }
+    //   if (wheatTypeResult.rows.length === 0) {
+    //     await client.query("ROLLBACK");
+    //     return { success: false, message: "Wheat Type not found or inactive" };
+    //   }
+    //   if (wheatTypeResult.rows.length === 0) {
+    //     await client.query("ROLLBACK");
+    //     return { success: false, message: "Wheat Type not found or inactive" };
+    //   }
 
-      validWheatTypeId = wheatTypeResult.rows[0].id;
-    }
+    //   validWheatTypeId = wheatTypeResult.rows[0].id;
+    // }
 
     let validTransporterId = null;
     if (transporter_id) {
@@ -165,11 +143,6 @@ const createDeliveryOrder = async (
         await client.query("ROLLBACK");
         return { success: false, message: "Transporter not found or inactive" };
       }
-      if (transporterResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Transporter not found or inactive" };
-      }
-
       validTransporterId = transporterResult.rows[0].id;
     }
 
@@ -250,19 +223,17 @@ const createDeliveryOrder = async (
         customer_id,
         driver_id,
         measurement,
-        product_type_id,
         packing_type_id,
-        vessel_id,
         do_no,
         activitycheck,
         isactive,
-        wheat_type_id,
         old_truck_no,
         order_type,
         transporter_id,
         buying_center_id,
         supplier_id,
-        purchase_type_id
+        purchase_type_id,
+        offloading_location
       )
       VALUES (
         CONCAT(TO_CHAR(CURRENT_DATE, 'YYYYMMDD'), LPAD(nextval('delivery_order_seq')::text, 4, '0')),
@@ -271,19 +242,17 @@ const createDeliveryOrder = async (
         $3,  -- customer_id
         $4,  -- driver_id
         $5,  -- measurement
-        $6,  -- product_type_id
-        $7,  -- packing_type_id
-        $8,  -- vessel_id
-        $9,  -- do_no
-        $10, -- activitycheck
+        $6,  -- packing_type_id
+        $7,  -- do_no
+        $8, -- activitycheck
         true,
-        $11, -- wheat_type_id
-        $12, -- old_truck_no
-        $13, -- order_type
-        $14, -- transporter_id
-        $15, -- buying_center_id
-        $16, -- supplier_id
-        $17  -- purchase_type_id
+        $9, -- old_truck_no
+        $10, -- order_type
+        $11, -- transporter_id
+        $12, -- buying_center_id
+        $13, -- supplier_id
+        $14, -- purchase_type_id
+        $15  -- offloading_location
       )
       RETURNING order_number;
     `;
@@ -294,18 +263,19 @@ const createDeliveryOrder = async (
       customerId,
       driverId || null,
       measurement || 0,
-      validProductId,
+      // validProductId,
       validPackingTypeId,
-      vesselId,
+      // vesselId,
       do_no,
       activity_check,
-      validWheatTypeId,
-      old_truck_no ? old_truck_no.toUpperCase().trim() : null,
+      // validWheatTypeId,
+      oldTruckNoUpperCase,
       order_type,
       validTransporterId,
       validBuyingCenterId,
       validSupplierId,
       validPurchaseTypeId,
+      offloading_location,
     ]);
 
     const orderNumber = result.rows[0].order_number;
@@ -330,24 +300,23 @@ const createDeliveryOrder = async (
         destination,
         transaction_type,
         packing_id,
-        price_per_unit,
         isactive,
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     console.log("order_items", order_items);
 
     for (const order of order_items) {
-      if (typeof order.product === "string") {
+      if (typeof order.id === "string") {
         // Product is a string → find or create it
         const payload = {
           name: order.product_name,
-          item_code: order.product,
+          id: order.id,
           isactive: true,
-          product_type_id: 1,
+          // product_type_id: 1, // no longer used
         };
         const productId = await getOrCreateProductByCode(payload);
         console.log("P ID", productId);
@@ -362,23 +331,23 @@ const createDeliveryOrder = async (
           source,
           destination,
           transaction_type,
-          packing_id,
-          order.price_per_unit,
+          validPackingId,
+          // order.price_per_unit,
         ]);
       } else {
         // Product is already an ID
         await client.query(insertFinishedOrdersQuery, [
           order_id,
           sku,
-          order.product,
+          order.id,
           order.packing_type,
           order.unit,
           order.quantity,
           source,
           destination,
           transaction_type,
-          packing_id,
-          order.price_per_unit,
+          validPackingId,
+          // order.price_per_unit,
         ]);
       }
     }
@@ -445,7 +414,7 @@ const createDeliveryAndFinishedOrder = async (
   customer_name,
   driver_id,
   measurement,
-  product_type_id,
+  /* product_type_id, */
   packing_type_id,
   transporter_id,
   buying_center_id,
@@ -478,17 +447,8 @@ const createDeliveryAndFinishedOrder = async (
       validDriverId = driverRes.rows[0].id;
     }
 
-    // ✅ Validate product type
+    // product_type_id no longer used
     let validProductId = null;
-    if (product_type_id) {
-      const productRes = await client.query(
-        "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true",
-        [product_type_id],
-      );
-      if (productRes.rows.length === 0)
-        throw new Error("Product not found or inactive");
-      validProductId = productRes.rows[0].id;
-    }
 
     // ✅ Validate packing type
     const packRes = await client.query(
@@ -562,8 +522,8 @@ const createDeliveryAndFinishedOrder = async (
     // ✅ Insert finished orders
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
-      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, price_per_unit, isactive, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, isactive, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
     `;
 
     for (const order of order_items) {
@@ -571,12 +531,12 @@ const createDeliveryAndFinishedOrder = async (
       const destinationVal = order.destination || null;
       const transactionTypeVal = order.transaction_type || null;
 
-      if (typeof order.product === "string") {
+      if (typeof order.id === "string") {
         const payload = {
           name: order.product_name,
-          item_code: order.product,
+          id: order.id,
           isactive: true,
-          product_type_id: 1,
+          // product_type_id: 1, // no longer used
         };
         const productId = await getOrCreateProductByCode(payload);
         await client.query(insertFinishedOrdersQuery, [
@@ -589,7 +549,7 @@ const createDeliveryAndFinishedOrder = async (
           sourceVal,
           destinationVal,
           transactionTypeVal,
-          order.price_per_unit ?? 0,
+          // order.price_per_unit ?? 0,
         ]);
       } else {
         await client.query(insertFinishedOrdersQuery, [
@@ -602,7 +562,7 @@ const createDeliveryAndFinishedOrder = async (
           sourceVal,
           destinationVal,
           transactionTypeVal,
-          order.price_per_unit ?? 0,
+          // order.price_per_unit ?? 0,
         ]);
       }
     }
@@ -630,12 +590,13 @@ const createDeliveryAndFinishedOrderV2 = async (
   customer_name,
   driver_id,
   measurement,
-  product_type_id,
+  /* product_type_id, */
   packing_type_id,
   transporter_id,
   buying_center_id,
   supplier_id,
   purchase_type_id,
+  offloading_location,
   order_items,
 ) => {
   const client = await pool.connect();
@@ -673,20 +634,8 @@ const createDeliveryAndFinishedOrderV2 = async (
       validDriverId = driverResult.rows[0].id;
     }
 
-    // ✅ Validate product
+    // product_type_id no longer used
     let validProductId = null;
-    if (product_type_id) {
-      const checkProductQuery =
-        "SELECT * FROM tos_product_type WHERE id = $1 AND isactive = true";
-      const productResult = await client.query(checkProductQuery, [
-        product_type_id,
-      ]);
-      if (productResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Product not found or inactive" };
-      }
-      validProductId = productResult.rows[0].id;
-    }
 
     // ✅ Validate packing type
     let validPackingId = null;
@@ -745,13 +694,14 @@ const createDeliveryAndFinishedOrderV2 = async (
           trailler_no = $2,
           customer_id = $3,
           driver_id = $4,
-          product_type_id = $5,
-          packing_type_id = $6,
-          transporter_id = $7,
-          buying_center_id = $8,
-          supplier_id = $9,
-          purchase_type_id = $10
-      WHERE id = $11 AND isactive = true
+          -- product_type_id = $5,
+          packing_type_id = $5,
+          transporter_id = $6,
+          buying_center_id = $7,
+          supplier_id = $8,
+          purchase_type_id = $9
+          -- offloading_location = $10
+      WHERE id = $10 AND isactive = true
     `;
 
     console.log("I a m here 12222");
@@ -760,13 +710,13 @@ const createDeliveryAndFinishedOrderV2 = async (
       trailler_no,
       customerId,
       validDriverId,
-      validProductId,
       validPackingId,
       validTransporterId,
       validBuyingCenterId,
       validSupplierId,
       validPurchaseTypeId,
       order_id,
+      // offloading_location || null,
     ]);
 
     console.log("I a m here 22222");
@@ -774,8 +724,8 @@ const createDeliveryAndFinishedOrderV2 = async (
     // ✅ Insert finished orders
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
-      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, price_per_unit, isactive, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      (delivery_order_id, sku, product_id, packing_type_id, unit, measurement, source, destination, transaction_type, isactive, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     const sku = null;
@@ -784,15 +734,16 @@ const createDeliveryAndFinishedOrderV2 = async (
       const destinationVal = order.destination || null;
       const transactionTypeVal = order.transaction_type || null;
 
-      console.log("order.product", order);
+      console.log("order.id", order);
 
-      if (typeof order.product === "string") {
+      if (typeof order.id === "string") {
         const payload = {
           name: order.product_name,
-          item_code: order.product,
+          id: order.id,
           isactive: true,
-          product_type_id: 1,
+          // product_type_id: 1, // no longer used
         };
+
         const productId = await getOrCreateProductByCode(payload);
         await client.query(insertFinishedOrdersQuery, [
           order_id,
@@ -804,20 +755,19 @@ const createDeliveryAndFinishedOrderV2 = async (
           sourceVal,
           destinationVal,
           transactionTypeVal,
-          order.price_per_unit ?? 0,
+          // order.price_per_unit ?? 0,
         ]);
       } else {
         await client.query(insertFinishedOrdersQuery, [
           order_id,
           sku,
-          order.product,
+          order.id,
           order.packing_type,
           order.unit,
           order.quantity,
           sourceVal,
           destinationVal,
           transactionTypeVal,
-          order.price_per_unit ?? 0,
         ]);
       }
     }
@@ -862,7 +812,6 @@ const getAllDeliveryorders = async (
         supp.name AS supplier_name,
         trans.title AS transporter_title,
         buyc.name AS buying_center_title,
-        prodty.name AS producttype,
         packty.name AS packingtype,
         purchtype.title AS purchase_type_title,
 
@@ -900,11 +849,6 @@ const getAllDeliveryorders = async (
         ) AS purchase_type,
 
         jsonb_build_object(
-          'id', prodty.id,
-          'name', prodty.name
-        ) AS product_type,
-
-        jsonb_build_object(
           'id', packty.id,
           'name', packty.name
         ) AS packing_type
@@ -916,7 +860,7 @@ const getAllDeliveryorders = async (
       LEFT JOIN tos_transporter trans ON trans.id = ord.transporter_id
       LEFT JOIN tos_buying_center buyc ON buyc.id = ord.buying_center_id
       LEFT JOIN tos_purchase_type purchtype ON purchtype.id = ord.purchase_type_id
-      LEFT JOIN tos_product_type prodty ON prodty.id = ord.product_type_id
+      -- LEFT JOIN tos_product_type prodty ON prodty.id = ord.product_type_id
       LEFT JOIN tos_packing_type packty ON packty.id = ord.packing_type_id
 
       WHERE ord.isactive = TRUE
