@@ -36,7 +36,7 @@ const createDeliveryOrder = async (
   source,
   destination,
   packing_id,
-  offloading_location,
+  dispatch_type_id,
 ) => {
   const client = await pool.connect(); // Get a database client
   try {
@@ -233,7 +233,7 @@ const createDeliveryOrder = async (
         buying_center_id,
         supplier_id,
         purchase_type_id,
-        offloading_location
+        dispatch_type_id
       )
       VALUES (
         CONCAT(TO_CHAR(CURRENT_DATE, 'YYYYMMDD'), LPAD(nextval('delivery_order_seq')::text, 4, '0')),
@@ -252,7 +252,7 @@ const createDeliveryOrder = async (
         $12, -- buying_center_id
         $13, -- supplier_id
         $14, -- purchase_type_id
-        $15  -- offloading_location
+        $15  -- dispatch_type_id
       )
       RETURNING order_number;
     `;
@@ -275,7 +275,7 @@ const createDeliveryOrder = async (
       validBuyingCenterId,
       validSupplierId,
       validPurchaseTypeId,
-      offloading_location,
+      dispatch_type_id,
     ]);
 
     const orderNumber = result.rows[0].order_number;
@@ -596,7 +596,7 @@ const createDeliveryAndFinishedOrderV2 = async (
   buying_center_id,
   supplier_id,
   purchase_type_id,
-  offloading_location,
+  dispatch_type_id,
   order_items,
 ) => {
   const client = await pool.connect();
@@ -699,8 +699,8 @@ const createDeliveryAndFinishedOrderV2 = async (
           transporter_id = $6,
           buying_center_id = $7,
           supplier_id = $8,
-          purchase_type_id = $9
-          -- offloading_location = $10
+          purchase_type_id = $9,
+          dispatch_type_id = $10
       WHERE id = $10 AND isactive = true
     `;
 
@@ -716,7 +716,7 @@ const createDeliveryAndFinishedOrderV2 = async (
       validSupplierId,
       validPurchaseTypeId,
       order_id,
-      // offloading_location || null,
+      dispatch_type_id || null,
     ]);
 
     console.log("I a m here 22222");

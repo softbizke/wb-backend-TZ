@@ -147,7 +147,9 @@ async function autoPrintReceipt(order_no, res, auth) {
       phone,
       avrg_weight,
       buying_center,
-      offloading_location,
+      // offloading_location,
+      purchase_type,
+      dispatch_type,
     } = orderData[0];
     // Format date
     const formatDate = (date) => {
@@ -318,15 +320,15 @@ async function autoPrintReceipt(order_no, res, auth) {
               .drawLine()
               .style("NORMAL")
               .text(`Destination:  ${destination ?? "N/A"}`)
+              .text(`Purchase Type:  ${purchase_type ?? "N/A"}`)
+              .text(`Dispatch Type:  ${dispatch_type ?? "N/A"}`)
               .text(
                 `${customer ? "Customer" : supplier ? "Supplier" : "Party"}:  ${customer ?? supplier ?? "N/A"}`,
               );
 
             if (!net_weight) {
-              //if netweight is not available it means we are on first weight so we show the offloading confirmation template
               printer
                 .drawLine()
-                .align("CT")
                 .newLine()
                 .newLine()
                 .align("LT")
@@ -335,7 +337,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                 .drawLine()
                 .style("NORMAL")
                 .newLine()
-                .newLine()
+
                 .tableCustom(
                   [
                     { text: "Product", align: "LEFT", width: 0.45 },
@@ -347,7 +349,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
-                .newLine()
+
                 .newLine()
 
                 .tableCustom(
@@ -361,7 +363,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
-                .newLine()
+
                 .newLine()
 
                 .tableCustom(
@@ -375,7 +377,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
-                .newLine()
+
                 .newLine()
 
                 .tableCustom(
@@ -389,7 +391,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
-                .newLine()
+
                 .newLine()
 
                 .tableCustom(
@@ -407,6 +409,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
+
                 .newLine()
 
                 .tableCustom(
@@ -424,6 +427,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
+
                 .newLine()
 
                 .tableCustom(
@@ -441,7 +445,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
-                .newLine()
+
                 .newLine()
 
                 .tableCustom(
@@ -459,6 +463,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                   ],
                   { encoding: "cp857", size: [1, 1] },
                 )
+
                 .newLine()
                 .newLine()
 

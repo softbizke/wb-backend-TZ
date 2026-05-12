@@ -469,7 +469,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
     source,
     destination,
     packing_id,
-    offloading_location,
+    dispatch_type_id,
   } = data;
   let activity_type_name;
   let qty;
@@ -505,7 +505,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         source,
         destination,
         packing_id,
-        offloading_location,
+        dispatch_type_id,
       );
 
       if (!orderResult.success) {
@@ -686,7 +686,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         buying_center_id,
         supplier_id,
         purchase_type_id,
-        offloading_location,
+        dispatch_type_id,
       };
 
       const setClauses = [];
@@ -1142,6 +1142,7 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
         ord.transporter_id,
         ord.buying_center_id,
         ord.purchase_type_id,
+        ord.dispatch_type_id,
         ord.created_at,
 
         -- 🚛 Driver
@@ -1185,6 +1186,13 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
           'id', pt.id,
           'title', pt.title
         ) AS purchase_type,
+
+
+        -- Dispatch Type
+        jsonb_build_object(
+          'id', dt.id,
+          'title', dt.title
+        ) AS dispatch_type,
 
         -- ⚖️ Product Type and Packing Type
         -- jsonb_build_object(
@@ -1296,6 +1304,7 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
       LEFT JOIN tos_suppliers supp ON ord.supplier_id = supp.id
       LEFT JOIN tos_transporter trans ON ord.transporter_id = trans.id
       LEFT JOIN tos_buying_center bc ON ord.buying_center_id = bc.id
+      LEFT JOIN tos_dispatch_type dt ON ord.dispatch_type_id = dt.id
       LEFT JOIN tos_purchase_type pt ON ord.purchase_type_id = pt.id
       -- LEFT JOIN tos_product_type prodty ON ord.product_type_id = prodty.id
       LEFT JOIN tos_packing_type packty ON ord.packing_type_id = packty.id
@@ -1307,7 +1316,7 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
       ${whereSQL}
 
       GROUP BY 
-        ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, pt.id,
+        ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, pt.id, dt.id,
         -- prodty.id,
         packty.id, act10.id, act20.id,
         sw_ap.id, fw_ap.id, fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id

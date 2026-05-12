@@ -25,6 +25,15 @@ CREATE TABLE tos_purchase_type (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 4️⃣ Dispatch Type Table
+CREATE TABLE tos_dispatch_type (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  isactive BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 
 CREATE TABLE tos_suppliers (
   id SERIAL PRIMARY KEY,

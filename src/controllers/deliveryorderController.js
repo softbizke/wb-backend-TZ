@@ -22,7 +22,7 @@ const createDeliveryOrder = async (req, res) => {
     source,
     destination,
     packing_id,
-    offloading_location,
+    dispatch_type_id,
   } = req.body;
 
   // console.log("REQ BODY", req.body);
@@ -58,7 +58,7 @@ const createDeliveryOrder = async (req, res) => {
       source,
       destination,
       packing_id,
-      offloading_location,
+      dispatch_type_id,
     );
 
     // Return response based on the result
@@ -95,7 +95,7 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       transporter_id,
       buying_center_id,
       purchase_type_id,
-      offloading_location,
+      dispatch_type_id,
     } = req.body;
 
     console.log("ORD", req.body);
@@ -123,7 +123,7 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       buying_center_id || null,
       supplier_id || null, // Pass null if undefined
       purchase_type_id || null,
-      offloading_location || null,
+      dispatch_type_id || null,
       order_items,
     );
 

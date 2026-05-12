@@ -15,6 +15,7 @@ const driver = require("../controllers/driversController");
 const transporter = require("../controllers/transporterController");
 const buyingCenter = require("../controllers/buyingCenterController");
 const purchaseType = require("../controllers/purchaseTypeController");
+const dispatchType = require("../controllers/dispatchTypeController");
 const supplier = require("../controllers/supplierController");
 const activities = require("../controllers/activitiesController");
 const deliveryorder = require("../controllers/deliveryorderController");
@@ -266,6 +267,25 @@ router.post(
   "/createorfindpurchasetype/v1",
   authenticateToken.authenticateToken,
   purchaseType.getOrCreatePurchaseTypeByTitle
+);
+
+// -------------------- DISPATCH TYPE ROUTES --------------------
+router.post(
+  "/createdispatchtype/v1",
+  authenticateToken.authenticateToken,
+  dispatchType.createOrUpdateDispatchType
+);
+
+router.get(
+  "/dispatchtype/list/v1",
+  authenticateToken.authenticateToken,
+  dispatchType.getAllDispatchTypes
+);
+
+router.post(
+  "/createorfinddispatchtype/v1",
+  authenticateToken.authenticateToken,
+  dispatchType.getOrCreateDispatchTypeByTitle
 );
 
 // -------------------- SUPPLIER ROUTES --------------------

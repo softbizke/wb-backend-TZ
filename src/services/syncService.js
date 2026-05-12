@@ -215,12 +215,18 @@ class SyncService {
       // =========================================
       // ONLY COMPLETED / PROCESSED ORDERS
       // =========================================
+
+      //Note: We will only push tickets to CMS only if products is seed cottton or product id is 18
       let where = `
         WHERE
           act.activity_type IN (10,20)
           AND act.sw_at IS NOT NULL
           AND act.qty IS NOT NULL
           AND act.gross_weight IS NOT NULL
+          AND (
+            product.id = 18
+            OR LOWER(product.name) = 'seed cotton' 
+          )
       `;
 
       let having = "";
@@ -250,7 +256,7 @@ class SyncService {
             COALESCE(MAX(f_ord.updated_at), act.updated_at)
           ) AS updated_at,
 
-          act.created_at,
+          ord.created_at,
 
           ord.id AS delivery_order_id,
           ord.order_number,
@@ -288,6 +294,9 @@ class SyncService {
 
         LEFT JOIN tos_finished_orders f_ord
           ON f_ord.delivery_order_id = ord.id
+
+        INNER JOIN tos_product product
+          ON product.id = f_ord.product_id
 
         ${where}
 

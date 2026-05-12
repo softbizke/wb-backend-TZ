@@ -442,7 +442,6 @@ const getprocesseddeliveryorders = async (search) => {
         ord.truck_no,
         ord.trailler_no,
         ord.order_number,
-        ord.offloading_location,
 
         cust.name AS customer,
         cust.bp_code AS customer_code,
@@ -454,6 +453,8 @@ const getprocesseddeliveryorders = async (search) => {
         packty.name AS packing_type,
         finished.measurement AS qty,
         finished.destination AS destination,
+        pt.title AS purchase_type,
+        dt.title AS dispatch_type,
       
         act1.tare_weight AS tare_weight,
         act1.created_at AS tare_time,
@@ -494,6 +495,14 @@ const getprocesseddeliveryorders = async (search) => {
 
       LEFT JOIN tos_buying_center bc 
         ON ord.buying_center_id = bc.id
+
+
+      LEFT JOIN tos_purchase_type pt 
+        ON ord.purchase_type_id = pt.id
+
+
+      LEFT JOIN tos_dispatch_type dt 
+        ON ord.dispatch_type_id = dt.id
 
       LEFT JOIN tos_activities act1 
         ON ord.id = act1.delivery_order_id  
