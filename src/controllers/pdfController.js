@@ -320,159 +320,166 @@ async function autoPrintReceipt(order_no, res, auth) {
               .text(`Destination:  ${destination ?? "N/A"}`)
               .text(
                 `${customer ? "Customer" : supplier ? "Supplier" : "Party"}:  ${customer ?? supplier ?? "N/A"}`,
-              )
-              .drawLine()
-              .align("CT")
-              .newLine()
-              .newLine()
-              .align("LT")
-              .style("B")
-              .text("OFFLOADING CONFIRMATION")
-              .drawLine()
-              .style("NORMAL")
-              .newLine()
-              .newLine()
-              .tableCustom(
-                [
-                  { text: "Product", align: "LEFT", width: 0.45 },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
-              .newLine()
+              );
 
-              .tableCustom(
-                [
-                  { text: "Grade Type", align: "LEFT", width: 0.45 },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
-              .newLine()
+            if (!net_weight) {
+              //if netweight is not available it means we are on first weight so we show the offloading confirmation template
+              printer
+                .drawLine()
+                .align("CT")
+                .newLine()
+                .newLine()
+                .align("LT")
+                .style("B")
+                .text("OFFLOADING CONFIRMATION")
+                .drawLine()
+                .style("NORMAL")
+                .newLine()
+                .newLine()
+                .tableCustom(
+                  [
+                    { text: "Product", align: "LEFT", width: 0.45 },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
+                .newLine()
 
-              .tableCustom(
-                [
-                  { text: "Location", align: "LEFT", width: 0.45 },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
-              .newLine()
+                .tableCustom(
+                  [
+                    { text: "Grade Type", align: "LEFT", width: 0.45 },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
+                .newLine()
 
-              .tableCustom(
-                [
-                  { text: "Vehicle Reg. No", align: "LEFT", width: 0.45 },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
-              .newLine()
+                .tableCustom(
+                  [
+                    { text: "Location", align: "LEFT", width: 0.45 },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
+                .newLine()
 
-              .tableCustom(
-                [
-                  {
-                    text: "Qty Offloaded (Lorry Bags)",
-                    align: "LEFT",
-                    width: 0.45,
-                  },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
+                .tableCustom(
+                  [
+                    { text: "Vehicle Reg. No", align: "LEFT", width: 0.45 },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
+                .newLine()
 
-              .tableCustom(
-                [
-                  {
-                    text: "Total Qty (Trailer Bags)",
-                    align: "LEFT",
-                    width: 0.45,
-                  },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
+                .tableCustom(
+                  [
+                    {
+                      text: "Qty Offloaded (Lorry Bags)",
+                      align: "LEFT",
+                      width: 0.45,
+                    },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
 
-              .tableCustom(
-                [
-                  {
-                    text: "Total Qty Offloaded",
-                    align: "LEFT",
-                    width: 0.45,
-                  },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
-              .newLine()
+                .tableCustom(
+                  [
+                    {
+                      text: "Total Qty (Trailer Bags)",
+                      align: "LEFT",
+                      width: 0.45,
+                    },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
 
-              .tableCustom(
-                [
-                  {
-                    text: "Time Offloaded",
-                    align: "LEFT",
-                    width: 0.45,
-                  },
-                  {
-                    text: "Hrs:_____ Mins:_____",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
-              .newLine()
-              .newLine()
+                .tableCustom(
+                  [
+                    {
+                      text: "Total Qty Offloaded",
+                      align: "LEFT",
+                      width: 0.45,
+                    },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
+                .newLine()
 
-              .tableCustom(
-                [
-                  {
-                    text: "Stores Signature",
-                    align: "LEFT",
-                    width: 0.45,
-                  },
-                  {
-                    text: "________________________",
-                    align: "RIGHT",
-                    width: 0.55,
-                  },
-                ],
-                { encoding: "cp857", size: [1, 1] },
-              )
+                .tableCustom(
+                  [
+                    {
+                      text: "Time Offloaded",
+                      align: "LEFT",
+                      width: 0.45,
+                    },
+                    {
+                      text: "Hrs:_____ Mins:_____",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                )
+                .newLine()
+                .newLine()
+
+                .tableCustom(
+                  [
+                    {
+                      text: "Stores Signature",
+                      align: "LEFT",
+                      width: 0.45,
+                    },
+                    {
+                      text: "________________________",
+                      align: "RIGHT",
+                      width: 0.55,
+                    },
+                  ],
+                  { encoding: "cp857", size: [1, 1] },
+                );
+            }
+
+            printer
               .newLine()
               .newLine()
               .drawLine()
