@@ -865,7 +865,7 @@ const getAllDeliveryorders = async (
 
       WHERE ord.isactive = TRUE
         AND (ord.activitycheck != 2 OR ord.activitycheck IS NULL)
-        AND ord.created_at >= NOW() - INTERVAL '48 hours'
+        -- AND ord.created_at >= NOW() - INTERVAL '48 hours'
       
     `;
     const queryParams = [];
