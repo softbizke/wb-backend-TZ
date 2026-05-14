@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const eventRoutes = require('./routes/eventRoutes');
 const manualModeRoutes = require("./routes/manualModeRoutes");
+const syncRoutes = require("./routes/syncRoutes");
 
 const errorMiddleware = require('./middlewares/errorMiddleware');
 
@@ -19,6 +20,7 @@ app.use("/snapshots", express.static(path.join(__dirname, "../public/snapshots")
 
 app.use('/api', eventRoutes);
 app.use("/api/manual-mode", manualModeRoutes);
+app.use("/api/sync", syncRoutes);
 
 
 

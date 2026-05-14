@@ -19,6 +19,54 @@ const API_URL = WEIGHBRIDGE_CMS_API_URL + "/wb";
 const API_KEY = WEIGHBRIDGE_CMS_API_KEY;
 
 class SyncService {
+  constructor() {
+    this.isRunning = false;
+  }
+
+  // =============================
+  // SYNC ALL
+  // =============================
+  async syncAll(source = "Manual") {
+    if (this.isRunning) {
+      console.log("Skipping sync, already running...");
+      return {
+        success: false,
+        skipped: true,
+        message: "Sync already running",
+      };
+    }
+
+    this.isRunning = true;
+    const startedAt = new Date().toISOString();
+
+    try {
+      console.log(`${source} sync running...`);
+      await this.syncDrivers();
+      await this.syncBuyingCenters();
+      await this.syncWeighbridge();
+
+      return {
+        success: true,
+        skipped: false,
+        message: "Sync completed",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error(`${source} sync error:`, error.message);
+      return {
+        success: false,
+        skipped: false,
+        message: "Sync failed",
+        error: error.message,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+      };
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
   // =============================
   // GET LAST SYNC
   // =============================
@@ -216,16 +264,17 @@ class SyncService {
       // ONLY COMPLETED / PROCESSED ORDERS
       // =========================================
 
-      //Note: We will only push tickets to CMS only if products is seed cottton or product id is 18
+      //Note: We will only push tickets to CMS only if product is seed cotton or product id is 18
       let where = `
         WHERE
           act.activity_type IN (10,20)
           AND act.sw_at IS NOT NULL
           AND act.qty IS NOT NULL
           AND act.gross_weight IS NOT NULL
+          AND bc.cms_id IS NOT NULL
           AND (
             product.id = 18
-            OR LOWER(product.name) = 'seed cotton' 
+            OR TRIM(LOWER(product.name)) = 'seed cotton'
           )
       `;
 
@@ -289,7 +338,7 @@ class SyncService {
         INNER JOIN tos_delivery_orders ord
           ON ord.id = act.delivery_order_id
 
-        LEFT JOIN tos_buying_center bc
+        INNER JOIN tos_buying_center bc
           ON bc.id = ord.buying_center_id
 
         LEFT JOIN tos_finished_orders f_ord
