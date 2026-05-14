@@ -57,21 +57,21 @@ const getAllDrivers = async (req, res) => {
   }
 };
 const getOrCreateDriverByID = async (req, res) => {
-  const { id } = req.body;
+  const { id, id_no, name } = req.body;
+  const driverIdNo = id || id_no;
 
-  // Validate the input field
-  if (!id) {
+  if (!driverIdNo && !name) {
     return res.status(400).json({
       success: false,
-      message: "ID is required",
+      message: "Driver ID or name is required",
     });
   }
 
   try {
-    // Call the service function to either create or find the driver by code
-    const result = await drivers.getOrCreateDriverByID(req.body);
-
-    // Return response based on the result
+    const result = await drivers.getOrCreateDriverByID({
+      ...req.body,
+      id: driverIdNo,
+    });
 
     return res.status(200).json({ success: true, id: result });
   } catch (error) {

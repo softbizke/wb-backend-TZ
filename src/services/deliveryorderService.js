@@ -2,6 +2,7 @@ const { Pool } = require("pg");
 const { dbConfig } = require("../config/dbConfig");
 const { v4: uuidv4 } = require("uuid"); // Import the uuid library
 const { getOrCreateProductByCode } = require("./productService");
+const { resolveDriverId } = require("./driverService");
 
 // Create a connection pool
 const pool = new Pool({
@@ -123,19 +124,7 @@ const createDeliveryOrder = async (
       customerId = customerResult.rows[0].id;
     }
 
-    let driverId = null;
-    if (driver_id) {
-      const checkDriverQuery =
-        "SELECT * FROM tos_drivers WHERE id = $1 AND is_active = true";
-      const driverResult = await client.query(checkDriverQuery, [driver_id]);
-
-      if (driverResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Driver not found or inactive" };
-      }
-
-      driverId = driverResult.rows[0].id; // Set driverId if driver exists
-    }
+    const driverId = await resolveDriverId(client, driver_id);
 
     // let vesselId = null;
     // if (vessel) {
@@ -493,17 +482,8 @@ const createDeliveryAndFinishedOrder = async (
       throw new Error("Customer not found or inactive");
     const customerId = customerRes.rows[0].id;
 
-    // ✅ Validate driver
-    let validDriverId = null;
-    if (driver_id) {
-      const driverRes = await client.query(
-        "SELECT * FROM tos_drivers WHERE id = $1 AND is_active = true",
-        [driver_id],
-      );
-      if (driverRes.rows.length === 0)
-        throw new Error("Driver not found or inactive");
-      validDriverId = driverRes.rows[0].id;
-    }
+    // ✅ Validate or create driver
+    const validDriverId = await resolveDriverId(client, driver_id);
 
     // product_type_id no longer used
     let validProductId = null;
@@ -682,18 +662,8 @@ const createDeliveryAndFinishedOrderV2 = async (
       customerId = customerResult.rows[0].id;
     }
 
-    // ✅ Validate driver
-    let validDriverId = null;
-    if (driver_id) {
-      const checkDriverQuery =
-        "SELECT * FROM tos_drivers WHERE id = $1 AND is_active = true";
-      const driverResult = await client.query(checkDriverQuery, [driver_id]);
-      if (driverResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Driver not found or inactive" };
-      }
-      validDriverId = driverResult.rows[0].id;
-    }
+    // ✅ Validate or create driver
+    const validDriverId = await resolveDriverId(client, driver_id);
 
     // product_type_id no longer used
     let validProductId = null;

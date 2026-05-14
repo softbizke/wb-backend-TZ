@@ -15,6 +15,65 @@ const pool = new Pool({
   port: dbConfig.port,
 });
 
+const isNumericId = (value) => {
+  return (
+    typeof value === "number" ||
+    (typeof value === "string" && value.trim() !== "" && /^\d+$/.test(value.trim()))
+  );
+};
+
+const resolveDriverId = async (dbClient, driver) => {
+  if (driver === undefined || driver === null || driver === "") {
+    return null;
+  }
+
+  const db = dbClient || pool;
+
+  if (isNumericId(driver)) {
+    const result = await db.query(
+      "SELECT id FROM tos_drivers WHERE id = $1 AND is_active = true",
+      [driver],
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Driver not found or inactive");
+    }
+
+    return result.rows[0].id;
+  }
+
+  if (typeof driver === "string") {
+    const name = driver.trim();
+    if (!name) return null;
+
+    const existing = await db.query(
+      "SELECT id FROM tos_drivers WHERE LOWER(name) = LOWER($1) AND is_active = true LIMIT 1",
+      [name],
+    );
+
+    if (existing.rows.length > 0) {
+      return existing.rows[0].id;
+    }
+
+    const created = await db.query(
+      `
+        WITH driver_token AS (
+          SELECT nextval('tos_drivers_id_seq')::text AS value
+        )
+        INSERT INTO tos_drivers (name, id_no, license_no, is_active)
+        SELECT $1, 'AUTO-' || value, 'AUTO-' || value, true
+        FROM driver_token
+        RETURNING id
+      `,
+      [name],
+    );
+
+    return created.rows[0].id;
+  }
+
+  return null;
+};
+
 // Function to create or update driver
 const createOrUpdateDriver = async (id_no, name, license_no, is_active) => {
   try {
@@ -74,39 +133,49 @@ const getAllDrivers = async (search) => {
 };
 
 const getOrCreateDriverByID = async (data) => {
-  const { id, name, phone, is_active } = data;
-  // Validate the input field
-  try {
-    let query = "SELECT id FROM tos_drivers";
-    const queryParams = [];
-    if (id) {
-      query += " WHERE id_no = $1";
-      queryParams.push(id);
-    }
-    let result = await pool.query(query, queryParams);
-    if (result.rows.length > 0) {
-      return result.rows[0].id;
-    }
-    const insertQuery = `
-        INSERT INTO tos_drivers (name, id_no, license_no, is_active)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
-      `;
-    const insertResult = await pool.query(insertQuery, [
-      name,
-      id,
-      phone,
-      is_active,
-    ]);
-    const newDriverId = insertResult.rows[0].id;
-    return newDriverId;
-  } catch (error) {
-    throw new Error(error);
+  const { id, name, phone, is_active, isactive } = data;
+  const active = is_active ?? isactive ?? true;
+
+  if (!id && !name) {
+    throw new Error("Driver ID or name is required");
   }
+
+  let query = "SELECT id FROM tos_drivers WHERE ";
+  const queryParams = [];
+
+  if (id) {
+    query += "id_no = $1";
+    queryParams.push(id);
+  } else {
+    query += "LOWER(name) = LOWER($1)";
+    queryParams.push(name.trim());
+  }
+
+  const result = await pool.query(query, queryParams);
+
+  if (result.rows.length > 0) {
+    return result.rows[0].id;
+  }
+
+  const insertQuery = `
+    INSERT INTO tos_drivers (name, id_no, license_no, is_active)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id
+  `;
+
+  const insertResult = await pool.query(insertQuery, [
+    name?.trim(),
+    id || null,
+    phone || null,
+    active,
+  ]);
+
+  return insertResult.rows[0].id;
 };
 
 module.exports = {
   createOrUpdateDriver,
   getAllDrivers,
   getOrCreateDriverByID,
+  resolveDriverId,
 };
