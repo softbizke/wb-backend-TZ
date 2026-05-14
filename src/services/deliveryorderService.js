@@ -12,6 +12,63 @@ const pool = new Pool({
   port: dbConfig.port,
 });
 
+const isNumericId = (value) => {
+  return (
+    typeof value === "number" ||
+    (typeof value === "string" && value.trim() !== "" && /^\d+$/.test(value.trim()))
+  );
+};
+
+const resolveDestinationId = async (client, destination) => {
+  if (destination === undefined || destination === null || destination === "") {
+    return null;
+  }
+
+  if (isNumericId(destination)) {
+    const result = await client.query(
+      "SELECT id FROM tos_destinations WHERE id = $1 AND isactive = true",
+      [destination],
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Destination not found or inactive");
+    }
+
+    return result.rows[0].id;
+  }
+
+  if (typeof destination === "string") {
+    const title = destination.trim();
+    if (!title) return null;
+
+    const existing = await client.query(
+      "SELECT id FROM tos_destinations WHERE LOWER(title) = LOWER($1) LIMIT 1",
+      [title],
+    );
+
+    if (existing.rows.length > 0) {
+      return existing.rows[0].id;
+    }
+
+    const created = await client.query(
+      `
+        INSERT INTO tos_destinations (title, isactive, type)
+        VALUES ($1, true, 'external')
+        RETURNING id
+      `,
+      [title],
+    );
+
+    return created.rows[0].id;
+  }
+
+  return null;
+};
+
+const getOrderMeasurement = (order, fallback = 0) => {
+  return order.quantity ?? order.measurement ?? fallback;
+};
+
 // Function to create a new delivery order
 const createDeliveryOrder = async (
   truck_no,
@@ -286,6 +343,7 @@ const createDeliveryOrder = async (
     const order_id = orderDetails.rows[0].id;
 
     let sku = null;
+    const destinationId = await resolveDestinationId(client, destination);
 
     const insertFinishedOrdersQuery = `
       INSERT INTO tos_finished_orders
@@ -327,9 +385,9 @@ const createDeliveryOrder = async (
           productId,
           1, // Default packing type
           order.unit,
-          order.quantity,
+          getOrderMeasurement(order),
           source,
-          destination,
+          destinationId,
           transaction_type,
           validPackingId,
           // order.price_per_unit,
@@ -340,11 +398,11 @@ const createDeliveryOrder = async (
           order_id,
           sku,
           order.id,
-          order.packing_type,
+          order.packing_type_id || order.packing_type || 1,
           order.unit,
-          order.quantity,
+          getOrderMeasurement(order),
           source,
-          destination,
+          destinationId,
           transaction_type,
           validPackingId,
           // order.price_per_unit,
@@ -528,7 +586,10 @@ const createDeliveryAndFinishedOrder = async (
 
     for (const order of order_items) {
       const sourceVal = order.source || null;
-      const destinationVal = order.destination || null;
+      const destinationVal = await resolveDestinationId(
+        client,
+        order.destination_id || order.destination || null,
+      );
       const transactionTypeVal = order.transaction_type || null;
 
       if (typeof order.id === "string") {
@@ -545,7 +606,7 @@ const createDeliveryAndFinishedOrder = async (
           productId,
           1,
           order.unit,
-          order.quantity,
+          getOrderMeasurement(order),
           sourceVal,
           destinationVal,
           transactionTypeVal,
@@ -556,9 +617,9 @@ const createDeliveryAndFinishedOrder = async (
           deliveryOrderId,
           sku,
           order.product,
-          order.packing_type,
+          order.packing_type_id || order.packing_type || 1,
           order.unit,
-          order.quantity,
+          getOrderMeasurement(order),
           sourceVal,
           destinationVal,
           transactionTypeVal,
@@ -701,7 +762,7 @@ const createDeliveryAndFinishedOrderV2 = async (
           supplier_id = $8,
           purchase_type_id = $9,
           dispatch_type_id = $10
-      WHERE id = $10 AND isactive = true
+      WHERE id = $11 AND isactive = true
     `;
 
     console.log("I a m here 12222");
@@ -715,8 +776,8 @@ const createDeliveryAndFinishedOrderV2 = async (
       validBuyingCenterId,
       validSupplierId,
       validPurchaseTypeId,
-      order_id,
       dispatch_type_id || null,
+      order_id,
     ]);
 
     console.log("I a m here 22222");
@@ -731,7 +792,10 @@ const createDeliveryAndFinishedOrderV2 = async (
     const sku = null;
     for (const order of order_items) {
       const sourceVal = order.source || null;
-      const destinationVal = order.destination || null;
+      const destinationVal = await resolveDestinationId(
+        client,
+        order.destination_id || order.destination || null,
+      );
       const transactionTypeVal = order.transaction_type || null;
 
       console.log("order.id", order);
@@ -751,7 +815,7 @@ const createDeliveryAndFinishedOrderV2 = async (
           productId,
           1,
           order.unit,
-          order.quantity,
+          getOrderMeasurement(order),
           sourceVal,
           destinationVal,
           transactionTypeVal,
@@ -762,9 +826,9 @@ const createDeliveryAndFinishedOrderV2 = async (
           order_id,
           sku,
           order.id,
-          order.packing_type,
+          order.packing_type_id || order.packing_type || 1,
           order.unit,
-          order.quantity,
+          getOrderMeasurement(order),
           sourceVal,
           destinationVal,
           transactionTypeVal,

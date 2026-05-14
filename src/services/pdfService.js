@@ -452,7 +452,9 @@ const getprocesseddeliveryorders = async (search) => {
         prodty.name AS product_type,
         packty.name AS packing_type,
         finished.measurement AS qty,
-        finished.destination AS destination,
+        COALESCE(dest.title, finished.destination::text) AS destination,
+        dest.id AS destination_id,
+        dest.type AS destination_type,
         pt.title AS purchase_type,
         dt.title AS dispatch_type,
       
@@ -480,6 +482,9 @@ const getprocesseddeliveryorders = async (search) => {
 
       LEFT JOIN tos_finished_orders finished 
         ON ord.id = finished.delivery_order_id
+
+      LEFT JOIN tos_destinations dest
+        ON dest.id = finished.destination
 
       LEFT JOIN tos_drivers driv 
         ON ord.driver_id = driv.id

@@ -1218,7 +1218,14 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
               'unit', f_ord.unit,
               'transaction_type', f_ord.transaction_type,
               'source', f_ord.source,
-              'destination', f_ord.destination,
+              'destination', COALESCE(dest.title, f_ord.destination::text),
+              'destination_id', dest.id,
+              'destination_type', dest.type,
+              'destination_details', jsonb_build_object(
+                'id', dest.id,
+                'title', dest.title,
+                'type', dest.type
+              ),
               'measurement', f_ord.measurement
             )
           ) FILTER (WHERE f_ord.id IS NOT NULL),
@@ -1312,13 +1319,14 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
       -- Finished Orders + Product
       LEFT JOIN tos_finished_orders f_ord ON f_ord.delivery_order_id = ord.id
       LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
+      LEFT JOIN tos_destinations dest ON dest.id = f_ord.destination
 
       ${whereSQL}
 
       GROUP BY 
         ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, pt.id, dt.id,
         -- prodty.id,
-        packty.id, act10.id, act20.id,
+        packty.id, dest.id, act10.id, act20.id,
         sw_ap.id, fw_ap.id, fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
 
       ORDER BY 
@@ -1554,7 +1562,14 @@ const getActivity = async (delivery_order_id) => {
               'unit', f_ord.unit,
               'transaction_type', f_ord.transaction_type,
               'source', f_ord.source,
-              'destination', f_ord.destination
+              'destination', COALESCE(dest.title, f_ord.destination::text),
+              'destination_id', dest.id,
+              'destination_type', dest.type,
+              'destination_details', jsonb_build_object(
+                'id', dest.id,
+                'title', dest.title,
+                'type', dest.type
+              )
             )
           ) FILTER (WHERE f_ord.id IS NOT NULL),
           '[]'::json
@@ -1603,6 +1618,7 @@ const getActivity = async (delivery_order_id) => {
       LEFT JOIN tos_drivers drv ON ord.driver_id = drv.id
       LEFT JOIN tos_finished_orders f_ord ON f_ord.delivery_order_id = ord.id
       LEFT JOIN tos_product prod ON prod.id = f_ord.product_id
+      LEFT JOIN tos_destinations dest ON dest.id = f_ord.destination
       LEFT JOIN tos_packing_type vprod ON vprod.id = f_ord.packing_type_id
 
       -- LEFT JOIN tos_product_type ptype ON ptype.id = ord.product_type_id
@@ -1631,7 +1647,7 @@ const getActivity = async (delivery_order_id) => {
       GROUP BY 
         ord.id, cust.id, drv.id, supp.id, transp.id, bc.id, pt.id, 
         -- ptype.id,
-        packtype.id, act10.id, act20.id,
+        packtype.id, dest.id, act10.id, act20.id,
         fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
 
       ORDER BY 

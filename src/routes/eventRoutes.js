@@ -13,6 +13,7 @@ const packing = require("../controllers/packingController");
 const customer = require("../controllers/customersController");
 const driver = require("../controllers/driversController");
 const transporter = require("../controllers/transporterController");
+const destination = require("../controllers/destinationController");
 const buyingCenter = require("../controllers/buyingCenterController");
 const purchaseType = require("../controllers/purchaseTypeController");
 const dispatchType = require("../controllers/dispatchTypeController");
@@ -229,6 +230,24 @@ router.post(
   transporter.getOrCreateTransporterByTitle
 );
 
+// -------------------- DESTINATION ROUTES --------------------
+router.post(
+  "/createdestination/v1",
+  authenticateToken.authenticateToken,
+  destination.createOrUpdateDestination
+);
+
+router.get(
+  "/destination/list/v1",
+  authenticateToken.authenticateToken,
+  destination.getAllDestinations
+);
+
+router.post(
+  "/createorfinddestination/v1",
+  authenticateToken.authenticateToken,
+  destination.getOrCreateDestinationByTitle
+);
 
 // -------------------- BUYING CENTER ROUTES --------------------
 router.post(
