@@ -103,7 +103,7 @@ const getOrCreateCustomerByCode = async (req, res) => {
   const { name, bp_code, customer_type_id, isactive } = req.body;
 
   // Validate the input fields
-  if (!name || typeof isactive !== "boolean" || !customer_type_id || !bp_code) {
+  if (!name || typeof isactive !== "boolean" || !customer_type_id) {
     return res.status(400).json({
       success: false,
       message: "Name, isactive status, and customer_type_id are required",

@@ -342,18 +342,21 @@ const getAllCustomer = async (search, includeInactive = false) => {
 const getOrCreateCustomerByCode = async (data) => {
   try {
     const { name, bp_code, customer_type_id, isactive } = data;
-    //find customer by bp_code
-    let query = "SELECT id FROM tos_customer";
-    const queryParams = [];
+
     if (bp_code) {
+      //find customer by bp_code
+      let query = "SELECT id FROM tos_customer";
+      const queryParams = [];
+
       query += " WHERE bp_code ILIKE $1";
       queryParams.push(`%${bp_code}%`);
+      let result = await pool.query(query, queryParams);
+      //if customer doesn't exist create one
+      if (result.rows.length > 0) {
+        return result.rows[0].id;
+      }
     }
-    let result = await pool.query(query, queryParams);
-    //if customer doesn't exist create one
-    if (result.rows.length > 0) {
-      return result.rows[0].id;
-    }
+
     //insert the new customer to tos_table data(bp_code,name, customer_type_id, isactive:true)
     const insertQuery = `
       INSERT INTO tos_customer (name, isactive, customer_type_id, bp_code)
