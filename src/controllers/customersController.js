@@ -1,5 +1,9 @@
 const customers = require("../services/customerService");
 
+const shouldIncludeInactive = (query) => {
+  return query.include_inactive === "true" || query.includeInactive === "true" || query.all === "true";
+};
+
 const createOrUpdateCustomerType = async (req, res) => {
   const { name, isactive } = req.body;
 
@@ -117,14 +121,63 @@ const getOrCreateCustomerByCode = async (req, res) => {
   }
 };
 
+const updateCustomerTypeStatus = async (req, res) => {
+  const { id, isactive } = req.body;
+
+  if (!id || typeof isactive !== "boolean") {
+    return res.status(400).json({
+      success: false,
+      message: "Customer type id and explicit isactive boolean are required",
+    });
+  }
+
+  try {
+    const result = await customers.updateCustomerTypeStatus(id, isactive);
+
+    if (result.success) {
+      return res.status(200).json(result);
+    } else {
+      return res.status(404).json({ success: false, message: result.message });
+    }
+  } catch (error) {
+    console.error("Error in controller:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+const updateCustomerStatus = async (req, res) => {
+  const { id, isactive } = req.body;
+
+  if (!id || typeof isactive !== "boolean") {
+    return res.status(400).json({
+      success: false,
+      message: "Customer id and explicit isactive boolean are required",
+    });
+  }
+
+  try {
+    const result = await customers.updateCustomerStatus(id, isactive);
+
+    if (result.success) {
+      return res.status(200).json(result);
+    } else {
+      return res.status(404).json({ success: false, message: result.message });
+    }
+  } catch (error) {
+    console.error("Error in controller:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // Controller to get all customer types
 const getAllCustomerTypes = async (req, res) => {
   try {
     // Extract the search query from request parameters
     const { search } = req.query;
+    const includeInactive = shouldIncludeInactive(req.query);
 
     // Call the service function with the search query
-    const customerTypes = await customers.getAllCustomerTypes(search);
+    const customerTypes = await customers.getAllCustomerTypes(search, includeInactive);
 
     // Send the response with the filtered customer types
     res.status(200).json({
@@ -147,9 +200,10 @@ const getAllCustomer = async (req, res) => {
   try {
     // Extract the search query from request parameters
     const { search } = req.query;
+    const includeInactive = shouldIncludeInactive(req.query);
 
     // Call the service function with the search query
-    const customerTypes = await customers.getAllCustomer(search);
+    const customerTypes = await customers.getAllCustomer(search, includeInactive);
 
     // Send the response with the filtered customer types
     res.status(200).json({
@@ -174,4 +228,6 @@ module.exports = {
   getAllCustomer,
   updateCustomerById,
   getOrCreateCustomerByCode,
+  updateCustomerTypeStatus,
+  updateCustomerStatus,
 };

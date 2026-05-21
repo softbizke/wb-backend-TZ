@@ -3,6 +3,7 @@ const { dbConfig } = require("../config/dbConfig");
 const { v4: uuidv4 } = require("uuid"); // Import the uuid library
 const { getOrCreateProductByCode } = require("./productService");
 const { resolveDriverId } = require("./driverService");
+const { resolveCustomerId } = require("./customerService");
 
 // Create a connection pool
 const pool = new Pool({
@@ -109,20 +110,7 @@ const createDeliveryOrder = async (
       ? old_truck_no.toUpperCase().trim()
       : null;
 
-    let customerId = null;
-    if (customer_name) {
-      const checkCustomerQuery =
-        "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true";
-      const customerResult = await client.query(checkCustomerQuery, [
-        customer_name,
-      ]);
-
-      if (customerResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Customer not found or inactive" };
-      }
-      customerId = customerResult.rows[0].id;
-    }
+    const customerId = await resolveCustomerId(client, customer_name);
 
     const driverId = await resolveDriverId(client, driver_id);
 
@@ -473,14 +461,8 @@ const createDeliveryAndFinishedOrder = async (
   try {
     await client.query("BEGIN");
 
-    // ✅ Validate customer
-    const customerRes = await client.query(
-      "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true",
-      [customer_name],
-    );
-    if (customerRes.rows.length === 0)
-      throw new Error("Customer not found or inactive");
-    const customerId = customerRes.rows[0].id;
+    // ✅ Validate or create customer
+    const customerId = await resolveCustomerId(client, customer_name);
 
     // ✅ Validate or create driver
     const validDriverId = await resolveDriverId(client, driver_id);
@@ -647,20 +629,8 @@ const createDeliveryAndFinishedOrderV2 = async (
   try {
     await client.query("BEGIN");
 
-    // ✅ Validate customer
-    let customerId = null;
-    if (customer_name) {
-      const checkCustomerQuery =
-        "SELECT * FROM tos_customer WHERE id = $1 AND isactive = true";
-      const customerResult = await client.query(checkCustomerQuery, [
-        customer_name,
-      ]);
-      if (customerResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Customer not found or inactive" };
-      }
-      customerId = customerResult.rows[0].id;
-    }
+    // ✅ Validate or create customer
+    const customerId = await resolveCustomerId(client, customer_name);
 
     // ✅ Validate or create driver
     const validDriverId = await resolveDriverId(client, driver_id);

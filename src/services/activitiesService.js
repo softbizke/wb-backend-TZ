@@ -2,6 +2,7 @@ const { Pool } = require("pg");
 const { dbConfig } = require("../config/dbConfig");
 const deliveryOrderService = require("./deliveryorderService");
 const { resolveDriverId } = require("./driverService");
+const { resolveCustomerId } = require("./customerService");
 const { autoPrintReceipt } = require("../controllers/pdfController");
 
 // Create a connection pool
@@ -671,12 +672,13 @@ const createOrUpdateActivityV2 = async (data, user) => {
       // Update the delivery order's activitycheck and measurement
 
       const resolvedDriverId = await resolveDriverId(pool, driver_id);
+      const resolvedCustomerId = await resolveCustomerId(pool, customer_id);
 
       const fields = {
         activitycheck: activityCheck,
         measurement,
         isactive: isActive,
-        customer_id,
+        customer_id: resolvedCustomerId,
         driver_id: resolvedDriverId,
         // product_type_id,
         packing_type_id,

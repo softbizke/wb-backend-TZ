@@ -174,6 +174,11 @@ router.get(
   customer.getAllCustomerTypes
 );
 router.post(
+  "/customertype/status/v1",
+  authenticateToken.authenticateToken,
+  customer.updateCustomerTypeStatus
+);
+router.post(
   "/createcustomer/v1",
   authenticateToken.authenticateToken,
   customer.createOrUpdateCustomer
@@ -187,6 +192,11 @@ router.get(
   "/customer/list/v1",
   authenticateToken.authenticateToken,
   customer.getAllCustomer
+);
+router.post(
+  "/customer/status/v1",
+  authenticateToken.authenticateToken,
+  customer.updateCustomerStatus
 );
 router.post(
   "/createorfindcustomer/v1",
