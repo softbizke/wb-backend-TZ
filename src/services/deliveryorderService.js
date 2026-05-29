@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require("uuid"); // Import the uuid library
 const { getOrCreateProductByCode } = require("./productService");
 const { resolveDriverId } = require("./driverService");
 const { resolveCustomerId } = require("./customerService");
+const { resolveSupplierId } = require("./supplierService");
 
 // Create a connection pool
 const pool = new Pool({
@@ -200,22 +201,8 @@ const createDeliveryOrder = async (
       validBuyingCenterId = buyingCenterResult.rows[0].id;
     }
 
-    // ✅ Validate Supplier
-    let validSupplierId = null;
-    if (supplier_id) {
-      const checkSupplierQuery =
-        "SELECT * FROM tos_suppliers WHERE id = $1 AND isactive = true";
-      const supplierResult = await client.query(checkSupplierQuery, [
-        supplier_id,
-      ]);
-
-      if (supplierResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { success: false, message: "Supplier not found or inactive" };
-      }
-
-      validSupplierId = supplierResult.rows[0].id;
-    }
+    // ✅ Validate or create supplier
+    const validSupplierId = await resolveSupplierId(client, supplier_id);
 
     // ✅ Validate Purchase Type
     let validPurchaseTypeId = null;
@@ -501,11 +488,7 @@ const createDeliveryAndFinishedOrder = async (
       buying_center_id,
       "Buying center",
     );
-    const validSupplierId = await validateActive(
-      "tos_supplier",
-      supplier_id,
-      "Supplier",
-    );
+    const validSupplierId = await resolveSupplierId(client, supplier_id);
     const validPurchaseTypeId = await validateActive(
       "tos_purchase_type",
       purchase_type_id,
@@ -677,11 +660,7 @@ const createDeliveryAndFinishedOrderV2 = async (
       buying_center_id,
       "Buying center",
     );
-    const validSupplierId = await validateActive(
-      "tos_suppliers",
-      supplier_id,
-      "Supplier",
-    );
+    const validSupplierId = await resolveSupplierId(client, supplier_id);
     const validPurchaseTypeId = await validateActive(
       "tos_purchase_type",
       purchase_type_id,

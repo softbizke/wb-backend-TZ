@@ -10,12 +10,76 @@ const pool = new Pool({
   port: dbConfig.port,
 });
 
+const isNumericId = (value) => {
+  return (
+    typeof value === "number" ||
+    (typeof value === "string" &&
+      value.trim() !== "" &&
+      /^\d+$/.test(value.trim()))
+  );
+};
+
+const resolveSupplierId = async (dbClient, supplier) => {
+  if (supplier === undefined || supplier === null || supplier === "") {
+    return null;
+  }
+
+  const db = dbClient || pool;
+
+  if (isNumericId(supplier)) {
+    const result = await db.query(
+      "SELECT id FROM tos_suppliers WHERE id = $1 AND isactive = true",
+      [supplier],
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Supplier not found or inactive");
+    }
+
+    return result.rows[0].id;
+  }
+
+  if (typeof supplier === "string") {
+    const name = supplier.trim();
+    if (!name) return null;
+
+    const existing = await db.query(
+      `
+        SELECT id
+        FROM tos_suppliers
+        WHERE LOWER(name) = LOWER($1) AND isactive = true
+        LIMIT 1
+      `,
+      [name],
+    );
+
+    if (existing.rows.length > 0) {
+      return existing.rows[0].id;
+    }
+
+    const created = await db.query(
+      `
+        INSERT INTO tos_suppliers (name, phone_number, isactive)
+        VALUES ($1, NULL, true)
+        RETURNING id
+      `,
+      [name],
+    );
+
+    return created.rows[0].id;
+  }
+
+  return null;
+};
+
 // Function to create or update supplier
 const createOrUpdateSupplier = async (name, phone_number, isactive) => {
   try {
     // Check if supplier exists
-    const checkQuery = "SELECT * FROM tos_suppliers WHERE phone_number = $1";
-    const result = await pool.query(checkQuery, [phone_number]);
+    const checkQuery = phone_number
+      ? "SELECT * FROM tos_suppliers WHERE phone_number = $1"
+      : "SELECT * FROM tos_suppliers WHERE LOWER(name) = LOWER($1)";
+    const result = await pool.query(checkQuery, [phone_number || name]);
 
     if (result.rows.length === 0) {
       // Create new supplier
@@ -29,10 +93,15 @@ const createOrUpdateSupplier = async (name, phone_number, isactive) => {
       // Update existing supplier
       const updateQuery = `
         UPDATE tos_suppliers
-        SET name = $1, isactive = $2, updated_at = CURRENT_TIMESTAMP
-        WHERE phone_number = $3
+        SET name = $1, phone_number = $2, isactive = $3, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
       `;
-      await pool.query(updateQuery, [name, isactive, phone_number]);
+      await pool.query(updateQuery, [
+        name,
+        phone_number || null,
+        isactive,
+        result.rows[0].id,
+      ]);
       return { success: true, message: "Supplier updated successfully" };
     }
   } catch (error) {
@@ -61,11 +130,13 @@ const getAllSuppliers = async (search) => {
   }
 };
 
-// Get or create supplier by phone number
+// Get or create supplier by phone number or name
 const getOrCreateSupplierByPhone = async (name, phone_number, isactive) => {
   try {
-    const query = "SELECT id FROM tos_suppliers WHERE phone_number = $1";
-    const result = await pool.query(query, [phone_number]);
+    const query = phone_number
+      ? "SELECT id FROM tos_suppliers WHERE phone_number = $1"
+      : "SELECT id FROM tos_suppliers WHERE LOWER(name) = LOWER($1)";
+    const result = await pool.query(query, [phone_number || name]);
 
     if (result.rows.length > 0) {
       return result.rows[0].id;
@@ -78,7 +149,7 @@ const getOrCreateSupplierByPhone = async (name, phone_number, isactive) => {
     `;
     const insertResult = await pool.query(insertQuery, [
       name,
-      phone_number,
+      phone_number || null,
       isactive,
     ]);
     return insertResult.rows[0].id;
@@ -92,4 +163,5 @@ module.exports = {
   createOrUpdateSupplier,
   getAllSuppliers,
   getOrCreateSupplierByPhone,
+  resolveSupplierId,
 };

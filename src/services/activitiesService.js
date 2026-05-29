@@ -3,6 +3,7 @@ const { dbConfig } = require("../config/dbConfig");
 const deliveryOrderService = require("./deliveryorderService");
 const { resolveDriverId } = require("./driverService");
 const { resolveCustomerId } = require("./customerService");
+const { resolveSupplierId } = require("./supplierService");
 const { autoPrintReceipt } = require("../controllers/pdfController");
 
 // Create a connection pool
@@ -673,6 +674,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
 
       const resolvedDriverId = await resolveDriverId(pool, driver_id);
       const resolvedCustomerId = await resolveCustomerId(pool, customer_id);
+      const resolvedSupplierId = await resolveSupplierId(pool, supplier_id);
 
       const fields = {
         activitycheck: activityCheck,
@@ -689,7 +691,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         order_type,
         transporter_id,
         buying_center_id,
-        supplier_id,
+        supplier_id: resolvedSupplierId,
         purchase_type_id,
         dispatch_type_id,
       };

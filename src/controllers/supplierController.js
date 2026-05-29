@@ -4,10 +4,10 @@ const supplierService = require("../services/supplierService");
 const createOrUpdateSupplier = async (req, res) => {
   const { name, phone_number, isactive } = req.body;
 
-  if (!name || !phone_number || typeof isactive !== "boolean") {
+  if (!name || typeof isactive !== "boolean") {
     return res.status(400).json({
       success: false,
-      message: "name, phone_number, and isactive status are required",
+      message: "name and isactive status are required",
     });
   }
 
@@ -45,10 +45,10 @@ const getAllSuppliers = async (req, res) => {
 const getOrCreateSupplierByPhone = async (req, res) => {
   const { name, phone_number, isactive } = req.body;
 
-  if (!phone_number) {
+  if (!name && !phone_number) {
     return res.status(400).json({
       success: false,
-      message: "phone_number is required",
+      message: "name or phone_number is required",
     });
   }
 
