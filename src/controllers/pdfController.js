@@ -144,6 +144,7 @@ async function autoPrintReceipt(order_no, res, auth) {
       driver,
       qty,
       destination,
+      source,
       phone,
       avrg_weight,
       buying_center,
@@ -320,6 +321,7 @@ async function autoPrintReceipt(order_no, res, auth) {
               .drawLine()
               .style("NORMAL")
               .text(`Destination:  ${destination ?? "N/A"}`)
+              .text(`Source:  ${source ?? "N/A"}`)
               .text(`Purchase Type:  ${purchase_type ?? "N/A"}`)
               .text(`Dispatch Type:  ${dispatch_type ?? "N/A"}`)
               .text(

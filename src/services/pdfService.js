@@ -452,6 +452,7 @@ const getprocesseddeliveryorders = async (search) => {
         prodty.name AS product_type,
         packty.name AS packing_type,
         finished.measurement AS qty,
+        finished.source AS source,
         COALESCE(dest.title, finished.destination::text) AS destination,
         dest.id AS destination_id,
         dest.type AS destination_type,
