@@ -189,7 +189,7 @@ async function autoPrintReceipt(order_no, res, auth) {
               .text("P.O. BOX 11074, MWANZA, TANZANIA")
               .text(`Date: ${DateTime.now().toFormat("dd-LL-yyyy HH:mm")}`)
 
-              .text("Phone: +254 700 000 000")
+              .text("Phone: 0767461986")
               .newLine()
               .align("CT")
               .style("B")
@@ -298,17 +298,17 @@ async function autoPrintReceipt(order_no, res, auth) {
               .style("NORMAL")
               .table([
                 "First",
-                Number.parseInt(tare_weight),
+                formatWeight(tare_weight),
                 formatDate(tare_time),
               ])
               .table([
                 "Second",
-                gross_weight ? Number.parseInt(gross_weight) : "-",
+                gross_weight ? formatWeight(gross_weight) : "-",
                 gross_weight ? formatDate(gross_time) : "-",
               ])
               .table([
                 "Net",
-                net_weight ? Number.parseInt(net_weight) : "-",
+                net_weight ? formatWeight(net_weight) : "-",
                 net_weight ? formatDate(gross_time) : "-",
               ])
               .drawLine()
@@ -492,10 +492,12 @@ async function autoPrintReceipt(order_no, res, auth) {
               .drawLine()
               .newLine()
               .align("CT")
-              .text(`Printed by: ${user.first_name} ${user.last_name}`)
+              .text(
+                `Printed by: ${formatName(user.first_name)} ${formatName(user.last_name)}`,
+              )
               .newLine()
               .cut()
-              .close();
+              .close();     
 
             // .text("Scan QR Code for Order Details") // ✅ Added text above QR Code
             // .qrimage(order_no, function (err) {
@@ -528,6 +530,23 @@ function formatTableRow(type, weight, time) {
   const weightColumn = String(weight).padEnd(8, " "); // Align weight values
   const timeColumn = time.padEnd(8, " "); // Show HH:MM only
   return `${typeColumn}${weightColumn}${timeColumn}`;
+}
+
+function formatWeight(weight) {
+  const parsedWeight = Number.parseInt(weight, 10);
+  return Number.isNaN(parsedWeight)
+    ? "N/A"
+    : parsedWeight.toLocaleString("en-US");
+}
+
+function formatName(name) {
+  if (!name) return "";
+
+  return String(name)
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 module.exports = {

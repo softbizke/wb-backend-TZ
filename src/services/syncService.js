@@ -205,24 +205,30 @@ class SyncService {
         await db.query(
           `
           INSERT INTO tos_buying_center (
-            cms_id, code, name, is_active, updated_at, cms_village_id, village_name, cms_cotton_type_id, cotton_type_name
+            cms_id, code, name, distance, is_active, updated_at, cms_zone_id, zone_name, cms_cotton_type_id, cotton_type_name
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
           ON CONFLICT (cms_id)
           DO UPDATE SET
             code = EXCLUDED.code,
             name = EXCLUDED.name,
+            distance = EXCLUDED.distance,
             is_active = EXCLUDED.is_active,
-            updated_at = EXCLUDED.updated_at;
+            updated_at = EXCLUDED.updated_at,
+            cms_zone_id = EXCLUDED.cms_zone_id,
+            zone_name = EXCLUDED.zone_name,
+            cms_cotton_type_id = EXCLUDED.cms_cotton_type_id,
+            cotton_type_name = EXCLUDED.cotton_type_name;
         `,
           [
             c.id,
             c.code,
             c.name,
+            c.distance,
             c.is_active,
             c.updated_at,
-            c.cms_village_id,
-            c.village_name,
+            c.cms_zone_id,
+            c.zone_name,
             c.cms_cotton_type_id,
             c.cotton_type_name,
           ],
@@ -243,6 +249,134 @@ class SyncService {
       console.error(error);
     }
   }
+
+  // =============================
+  // ONE-TIME BUYING CENTER UPDATE
+  // Updates existing buying centers from CMS changes since Jan 1, 2026.
+  // If uncommented, this fetches updated buying centers from CMS and updates
+  // existing local rows by cms_id, including zone/village fields and distance.
+  // =============================
+  // async manualUpdateBuyingCentersFrom2026() {
+  //   const since = "2026-01-01T00:00:00.000Z";
+  //
+  //   try {
+  //     const response = await axios.get(
+  //       `${API_URL}/buying-centers?since=${encodeURIComponent(since)}`,
+  //       {
+  //         headers: {
+  //           Authorization: "Bearer " + API_KEY,
+  //           Accept: "application/json",
+  //         },
+  //       },
+  //     );
+  //
+  //     const centers = response.data.data || [];
+  //
+  //     if (!centers.length) {
+  //       console.log("No buying centers returned for manual update");
+  //       return {
+  //         success: true,
+  //         message: "No buying centers returned for manual update",
+  //         since,
+  //         received: 0,
+  //         updated: 0,
+  //         missing: [],
+  //       };
+  //     }
+  //
+  //     const columns = await this.getBuyingCenterColumns();
+  //     const missing = [];
+  //     let updated = 0;
+  //
+  //     for (const center of centers) {
+  //       const updateFields = [];
+  //       const values = [];
+  //       const zoneId = center.cms_zone_id ?? center.cms_village_id;
+  //       const zoneName = center.zone_name ?? center.village_name;
+  //
+  //       const addUpdateField = (column, value) => {
+  //         if (!columns.has(column)) return;
+  //
+  //         values.push(value);
+  //         updateFields.push(`${column} = $${values.length}`);
+  //       };
+  //
+  //       addUpdateField("code", center.code);
+  //       addUpdateField("name", center.name);
+  //       addUpdateField("distance", center.distance);
+  //       addUpdateField("is_active", center.is_active);
+  //       addUpdateField("isactive", center.is_active);
+  //       addUpdateField("updated_at", center.updated_at);
+  //
+  //       // Some DB versions call these CMS zone fields "village" fields.
+  //       addUpdateField("cms_zone_id", zoneId);
+  //       addUpdateField("zone_name", zoneName);
+  //       addUpdateField("cms_village_id", zoneId);
+  //       addUpdateField("village_name", zoneName);
+  //
+  //       addUpdateField("cms_cotton_type_id", center.cms_cotton_type_id);
+  //       addUpdateField("cotton_type_name", center.cotton_type_name);
+  //
+  //       if (!updateFields.length) {
+  //         continue;
+  //       }
+  //
+  //       values.push(center.id);
+  //
+  //       const result = await db.query(
+  //         `
+  //         UPDATE tos_buying_center
+  //         SET ${updateFields.join(", ")}
+  //         WHERE cms_id = $${values.length}
+  //       `,
+  //         values,
+  //       );
+  //
+  //       if (result.rowCount > 0) {
+  //         updated += result.rowCount;
+  //       } else {
+  //         missing.push({
+  //           cms_id: center.id,
+  //           name: center.name,
+  //         });
+  //       }
+  //     }
+  //
+  //     console.log(
+  //       `Manual buying center update complete. Received ${centers.length}, updated ${updated}`,
+  //     );
+  //
+  //     return {
+  //       success: true,
+  //       message: "Manual buying center update completed",
+  //       since,
+  //       received: centers.length,
+  //       updated,
+  //       missing,
+  //     };
+  //   } catch (error) {
+  //     console.error("Manual buying center update failed:", error.message);
+  //     return {
+  //       success: false,
+  //       message: "Manual buying center update failed",
+  //       error: error.message,
+  //       since,
+  //     };
+  //   }
+  // }
+  //
+  // async getBuyingCenterColumns() {
+  //   const result = await db.query(
+  //     `
+  //     SELECT column_name
+  //     FROM information_schema.columns
+  //     WHERE table_schema = 'public'
+  //       AND table_name = 'tos_buying_center'
+  //   `,
+  //   );
+  //
+  //   return new Set(result.rows.map((row) => row.column_name));
+  // }
 
   // =============================
   // SYNC WEIGHBRIDGE (WB → CMS)
