@@ -15,6 +15,56 @@ const pool = new Pool({
   port: dbConfig.port,
 });
 
+const updateFinishedOrderMeasurements = async (deliveryOrderId, orderItems) => {
+  if (!deliveryOrderId || !Array.isArray(orderItems) || orderItems.length === 0) {
+    return;
+  }
+
+  for (const item of orderItems) {
+    const measurement = item.quantity ?? item.measurement;
+
+    if (measurement === null || measurement === undefined || measurement === "") {
+      continue;
+    }
+
+    if (item.finished_order_id) {
+      await pool.query(
+        `
+          UPDATE tos_finished_orders
+          SET measurement = $1,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+            AND delivery_order_id = $3
+        `,
+        [measurement, item.finished_order_id, deliveryOrderId],
+      );
+      continue;
+    }
+
+    const productId = item.product_id || item.product || item.id;
+
+    if (productId && typeof productId !== "string") {
+      await pool.query(
+        `
+          UPDATE tos_finished_orders
+          SET measurement = $1,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = (
+            SELECT id
+            FROM tos_finished_orders
+            WHERE delivery_order_id = $2
+              AND product_id = $3
+              AND isactive = true
+            ORDER BY id DESC
+            LIMIT 1
+          )
+        `,
+        [measurement, deliveryOrderId, productId],
+      );
+    }
+  }
+};
+
 const createOrUpdateActivityType = async (name, type, isactive) => {
   try {
     const checkActivityTypeQuery =
@@ -720,6 +770,9 @@ const createOrUpdateActivityV2 = async (data, user) => {
       `;
 
       const tos_del = await pool.query(query, values);
+      if (activity_type_name === "WBOUT") {
+        await updateFinishedOrderMeasurements(order.id, order_items);
+      }
 
       // const tos_del = await pool.query(
       //   `
@@ -1217,12 +1270,14 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
           json_agg(
             jsonb_build_object(
               'quantity', f_ord.measurement,
+              'finished_order_id', f_ord.id,
               'price_per_unit', COALESCE(f_ord.price_per_unit::numeric, 0),
               'total_amount', COALESCE(f_ord.price_per_unit::numeric, 0) * COALESCE(f_ord.measurement::numeric, 0),
               'name', prod.name,
               'id', prod.id,
               'sku', prod.item_code,
               'unit', f_ord.unit,
+              'packing_type_id', f_ord.packing_type_id,
               'transaction_type', f_ord.transaction_type,
               'source', f_ord.source,
               'destination', COALESCE(dest.title, f_ord.destination::text),
@@ -1563,10 +1618,13 @@ const getActivity = async (delivery_order_id) => {
           json_agg(
             jsonb_build_object(
               'quantity', f_ord.measurement, 
+              'finished_order_id', f_ord.id,
               'price_per_unit', COALESCE(f_ord.price_per_unit::numeric, 0),
               'total_amount', COALESCE(f_ord.price_per_unit::numeric, 0) * COALESCE(f_ord.measurement::numeric, 0),
               'name', prod.name,
+              'id', prod.id,
               'unit', f_ord.unit,
+              'packing_type_id', f_ord.packing_type_id,
               'transaction_type', f_ord.transaction_type,
               'source', f_ord.source,
               'destination', COALESCE(dest.title, f_ord.destination::text),

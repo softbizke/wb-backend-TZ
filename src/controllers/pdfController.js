@@ -10,6 +10,21 @@ const { DateTime } = require("luxon");
 const { getUser } = require("../services/usersService");
 const printerConfig = require("../config/printerConfig");
 
+function getCottonTypeCode(buyingCenter) {
+  const cottonTypeId = Number(buyingCenter?.cotton_type_id);
+  if (cottonTypeId === 1) return "01";
+  if (cottonTypeId === 2) return "02";
+
+  const cottonType = String(buyingCenter?.cotton_type ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (cottonType.startsWith("organic")) return "01";
+  if (cottonType.startsWith("conventional")) return "02";
+
+  return "N/A";
+}
+
 async function generatePDFHandler(req, res) {
   const { order_no } = req.query;
 
@@ -214,9 +229,7 @@ async function autoPrintReceipt(order_no, res, auth) {
                 .style("NORMAL")
                 .text(`Zone : ${buying_center.village ?? "N/A"}`)
                 .text(`Center : ${buying_center.title ?? "N/A"}`)
-                .text(
-                  `Cotton Type : ${buying_center.cotton_type ? (buying_center.cotton_type.toLowerCase() === "organic" ? "01" : "02") : "N/A"}`,
-                )
+                .text(`Cotton Type : ${getCottonTypeCode(buying_center)}`)
                 .drawLine()
                 .newLine();
             }
@@ -225,7 +238,7 @@ async function autoPrintReceipt(order_no, res, auth) {
             printer
               .align("LT")
               .style("B")
-              .text("TRUCK DETAILS")
+              .text("TRUCK DETAILS")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
               .drawLine()
               .style("NORMAL")
               .text(`Truck No: ${truck_no}`)

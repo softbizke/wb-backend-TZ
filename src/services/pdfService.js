@@ -473,6 +473,7 @@ const getprocesseddeliveryorders = async (search) => {
           'id', bc.id,
           'title', bc.name,
           'village', bc.village_name,
+          'cotton_type_id', bc.cms_cotton_type_id,
           'cotton_type', bc.cotton_type_name
         ) AS buying_center
               
