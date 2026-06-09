@@ -202,10 +202,13 @@ class SyncService {
       let latestTimestamp = lastSync;
 
       for (const c of centers) {
+        const villageId = c.cms_village_id ?? c.cms_zone_id;
+        const villageName = c.village_name ?? c.zone_name;
+
         await db.query(
           `
           INSERT INTO tos_buying_center (
-            cms_id, code, name, distance, is_active, updated_at, cms_zone_id, zone_name, cms_cotton_type_id, cotton_type_name
+            cms_id, code, name, distance, is_active, updated_at, cms_village_id, village_name, cms_cotton_type_id, cotton_type_name
           )
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
           ON CONFLICT (cms_id)
@@ -215,8 +218,8 @@ class SyncService {
             distance = EXCLUDED.distance,
             is_active = EXCLUDED.is_active,
             updated_at = EXCLUDED.updated_at,
-            cms_zone_id = EXCLUDED.cms_zone_id,
-            zone_name = EXCLUDED.zone_name,
+            cms_village_id = EXCLUDED.cms_village_id,
+            village_name = EXCLUDED.village_name,
             cms_cotton_type_id = EXCLUDED.cms_cotton_type_id,
             cotton_type_name = EXCLUDED.cotton_type_name;
         `,
@@ -227,8 +230,8 @@ class SyncService {
             c.distance,
             c.is_active,
             c.updated_at,
-            c.cms_zone_id,
-            c.zone_name,
+            villageId,
+            villageName,
             c.cms_cotton_type_id,
             c.cotton_type_name,
           ],
