@@ -471,6 +471,7 @@ const getprocesseddeliveryorders = async (search) => {
         -- 🏬 Buying Center
         jsonb_build_object(
           'id', bc.id,
+          'code', bc.code,
           'title', bc.name,
           'village', bc.village_name,
           'cotton_type_id', bc.cms_cotton_type_id,
