@@ -16,12 +16,16 @@ router.post(
 //   syncController.backfillWeighbridgeTicketDetails,
 // );
 
-// One-time buying center refresh route.
-// If uncommented, this runs the manual updater that fetches CMS buying centers
-// changed since Jan 1, 2026 and updates existing local rows by cms_id.
 // router.post(
-//   "/buying-centers/manual-update-2026/v1",
-//   syncController.manualUpdateBuyingCentersFrom2026,
+//   "/manual-cms-master-data-2026/v1",
+//   syncController.manualSyncCmsMasterDataFrom2026,
+// );
+
+// Temporary no-auth route for buying center backfill.
+// DELETE THIS ROUTE AFTER BACKFILL IS COMPLETE.
+// router.post(
+//   "/backfill-buying-centers/v1",
+//   syncController.backfillBuyingCenters,
 // );
 
 module.exports = router;

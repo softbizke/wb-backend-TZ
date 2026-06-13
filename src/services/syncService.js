@@ -254,132 +254,271 @@ class SyncService {
   }
 
   // =============================
-  // ONE-TIME BUYING CENTER UPDATE
-  // Updates existing buying centers from CMS changes since Jan 1, 2026.
-  // If uncommented, this fetches updated buying centers from CMS and updates
-  // existing local rows by cms_id, including zone/village fields and distance.
+  // ONE-TIME CMS MASTER DATA UPDATE
+  // Updates drivers and buying centers from CMS changes since Jan 1, 2026.
+  // This does not delete local-only rows and does not move normal sync cursors.
   // =============================
-  // async manualUpdateBuyingCentersFrom2026() {
-  //   const since = "2026-01-01T00:00:00.000Z";
-  //
-  //   try {
-  //     const response = await axios.get(
-  //       `${API_URL}/buying-centers?since=${encodeURIComponent(since)}`,
-  //       {
-  //         headers: {
-  //           Authorization: "Bearer " + API_KEY,
-  //           Accept: "application/json",
-  //         },
-  //       },
-  //     );
-  //
-  //     const centers = response.data.data || [];
-  //
-  //     if (!centers.length) {
-  //       console.log("No buying centers returned for manual update");
-  //       return {
-  //         success: true,
-  //         message: "No buying centers returned for manual update",
-  //         since,
-  //         received: 0,
-  //         updated: 0,
-  //         missing: [],
-  //       };
-  //     }
-  //
-  //     const columns = await this.getBuyingCenterColumns();
-  //     const missing = [];
-  //     let updated = 0;
-  //
-  //     for (const center of centers) {
-  //       const updateFields = [];
-  //       const values = [];
-  //       const zoneId = center.cms_zone_id ?? center.cms_village_id;
-  //       const zoneName = center.zone_name ?? center.village_name;
-  //
-  //       const addUpdateField = (column, value) => {
-  //         if (!columns.has(column)) return;
-  //
-  //         values.push(value);
-  //         updateFields.push(`${column} = $${values.length}`);
-  //       };
-  //
-  //       addUpdateField("code", center.code);
-  //       addUpdateField("name", center.name);
-  //       addUpdateField("distance", center.distance);
-  //       addUpdateField("is_active", center.is_active);
-  //       addUpdateField("isactive", center.is_active);
-  //       addUpdateField("updated_at", center.updated_at);
-  //
-  //       // Some DB versions call these CMS zone fields "village" fields.
-  //       addUpdateField("cms_zone_id", zoneId);
-  //       addUpdateField("zone_name", zoneName);
-  //       addUpdateField("cms_village_id", zoneId);
-  //       addUpdateField("village_name", zoneName);
-  //
-  //       addUpdateField("cms_cotton_type_id", center.cms_cotton_type_id);
-  //       addUpdateField("cotton_type_name", center.cotton_type_name);
-  //
-  //       if (!updateFields.length) {
-  //         continue;
-  //       }
-  //
-  //       values.push(center.id);
-  //
-  //       const result = await db.query(
-  //         `
-  //         UPDATE tos_buying_center
-  //         SET ${updateFields.join(", ")}
-  //         WHERE cms_id = $${values.length}
-  //       `,
-  //         values,
-  //       );
-  //
-  //       if (result.rowCount > 0) {
-  //         updated += result.rowCount;
-  //       } else {
-  //         missing.push({
-  //           cms_id: center.id,
-  //           name: center.name,
-  //         });
-  //       }
-  //     }
-  //
-  //     console.log(
-  //       `Manual buying center update complete. Received ${centers.length}, updated ${updated}`,
-  //     );
-  //
-  //     return {
-  //       success: true,
-  //       message: "Manual buying center update completed",
-  //       since,
-  //       received: centers.length,
-  //       updated,
-  //       missing,
-  //     };
-  //   } catch (error) {
-  //     console.error("Manual buying center update failed:", error.message);
-  //     return {
-  //       success: false,
-  //       message: "Manual buying center update failed",
-  //       error: error.message,
-  //       since,
-  //     };
-  //   }
-  // }
-  //
-  // async getBuyingCenterColumns() {
-  //   const result = await db.query(
-  //     `
-  //     SELECT column_name
-  //     FROM information_schema.columns
-  //     WHERE table_schema = 'public'
-  //       AND table_name = 'tos_buying_center'
-  //   `,
-  //   );
-  //
-  //   return new Set(result.rows.map((row) => row.column_name));
-  // }
+  async manualSyncCmsMasterDataFrom2026() {
+    const since = "2026-01-01T00:00:00.000Z";
+    const startedAt = new Date().toISOString();
+
+    try {
+      const [drivers, buyingCenters] = await Promise.all([
+        this.fetchCmsData("drivers", since),
+        this.fetchCmsData("buying-centers", since),
+      ]);
+
+      const driverResult = await this.upsertManualDrivers(drivers);
+      const buyingCenterResult =
+        await this.upsertManualBuyingCenters(buyingCenters);
+
+      return {
+        success: true,
+        message: "Manual CMS master data sync completed",
+        since,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        drivers: driverResult,
+        buying_centers: buyingCenterResult,
+      };
+    } catch (error) {
+      console.error("Manual CMS master data sync failed:", error.message);
+      return {
+        success: false,
+        message: "Manual CMS master data sync failed",
+        error: error.message,
+        since,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  async fetchCmsData(resource, since) {
+    const response = await axios.get(
+      `${API_URL}/${resource}?since=${encodeURIComponent(since)}`,
+      {
+        headers: {
+          Authorization: "Bearer " + API_KEY,
+          Accept: "application/json",
+        },
+      },
+    );
+
+    return response.data.data || [];
+  }
+
+  async upsertManualDrivers(drivers) {
+    const columns = await this.getTableColumns("tos_drivers");
+    const result = {
+      received: drivers.length,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
+    };
+
+    for (const driver of drivers) {
+      if (!driver.id) {
+        result.skipped += 1;
+        continue;
+      }
+
+      const row = {
+        cms_id: driver.id,
+        code: driver.code,
+        name: driver.name,
+        license_no: driver.license_no,
+        phone: driver.phone,
+        id_no: driver.id_no,
+        email: driver.email,
+        address: driver.address,
+        is_active: driver.is_active,
+        updated_at: driver.updated_at,
+      };
+
+      const existingId = await this.findExistingManualRow(
+        "tos_drivers",
+        columns,
+        [
+          { column: "cms_id", value: driver.id },
+          { column: "code", value: driver.code },
+          { column: "id_no", value: driver.id_no },
+        ],
+      );
+
+      if (existingId) {
+        await this.updateManualRow("tos_drivers", columns, existingId, row);
+        result.updated += 1;
+      } else {
+        await this.insertManualRow("tos_drivers", columns, row);
+        result.inserted += 1;
+      }
+    }
+
+    console.log(
+      `Manual driver sync complete. Received ${result.received}, updated ${result.updated}, inserted ${result.inserted}`,
+    );
+
+    return result;
+  }
+
+  async upsertManualBuyingCenters(centers) {
+    const columns = await this.getTableColumns("tos_buying_center");
+    const result = {
+      received: centers.length,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
+    };
+
+    for (const center of centers) {
+      if (!center.id) {
+        result.skipped += 1;
+        continue;
+      }
+
+      const villageId = center.cms_village_id ?? center.cms_zone_id;
+      const villageName = center.village_name ?? center.zone_name;
+
+      const row = {
+        cms_id: center.id,
+        code: center.code,
+        name: center.name,
+        distance: center.distance,
+        is_active: center.is_active,
+        isactive: center.is_active,
+        updated_at: center.updated_at,
+        cms_village_id: villageId,
+        village_name: villageName,
+        cms_zone_id: villageId,
+        zone_name: villageName,
+        cms_cotton_type_id: center.cms_cotton_type_id,
+        cotton_type_name: center.cotton_type_name,
+      };
+
+      const existingId = await this.findExistingManualRow(
+        "tos_buying_center",
+        columns,
+        [
+          { column: "cms_id", value: center.id },
+          { column: "code", value: center.code },
+          { column: "name", value: center.name },
+        ],
+      );
+
+      if (existingId) {
+        await this.updateManualRow(
+          "tos_buying_center",
+          columns,
+          existingId,
+          row,
+        );
+        result.updated += 1;
+      } else {
+        await this.insertManualRow("tos_buying_center", columns, row);
+        result.inserted += 1;
+      }
+    }
+
+    console.log(
+      `Manual buying center sync complete. Received ${result.received}, updated ${result.updated}, inserted ${result.inserted}`,
+    );
+
+    return result;
+  }
+
+  async findExistingManualRow(tableName, columns, matchers) {
+    for (const matcher of matchers) {
+      if (!columns.has(matcher.column)) continue;
+      if (
+        matcher.value === undefined ||
+        matcher.value === null ||
+        matcher.value === ""
+      ) {
+        continue;
+      }
+
+      const result = await db.query(
+        `
+        SELECT id
+        FROM ${tableName}
+        WHERE ${matcher.column} = $1
+        ORDER BY id ASC
+        LIMIT 1
+      `,
+        [matcher.value],
+      );
+
+      if (result.rows.length > 0) {
+        return result.rows[0].id;
+      }
+    }
+
+    return null;
+  }
+
+  async updateManualRow(tableName, columns, id, row) {
+    const updateFields = [];
+    const values = [];
+
+    for (const [column, value] of Object.entries(row)) {
+      if (!columns.has(column)) continue;
+
+      values.push(value);
+      updateFields.push(`${column} = $${values.length}`);
+    }
+
+    if (!updateFields.length) return;
+
+    values.push(id);
+
+    await db.query(
+      `
+      UPDATE ${tableName}
+      SET ${updateFields.join(", ")}
+      WHERE id = $${values.length}
+    `,
+      values,
+    );
+  }
+
+  async insertManualRow(tableName, columns, row) {
+    const insertColumns = [];
+    const values = [];
+
+    for (const [column, value] of Object.entries(row)) {
+      if (!columns.has(column)) continue;
+
+      insertColumns.push(column);
+      values.push(value);
+    }
+
+    if (!insertColumns.length) return;
+
+    const placeholders = insertColumns.map((_, index) => `$${index + 1}`);
+
+    await db.query(
+      `
+      INSERT INTO ${tableName} (${insertColumns.join(", ")})
+      VALUES (${placeholders.join(", ")})
+    `,
+      values,
+    );
+  }
+
+  async getTableColumns(tableName) {
+    const result = await db.query(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+    `,
+      [tableName],
+    );
+
+    return new Set(result.rows.map((row) => row.column_name));
+  }
 
   // =============================
   // SYNC WEIGHBRIDGE (WB → CMS)
@@ -1385,6 +1524,183 @@ class SyncService {
     }
   }
   */
+
+  // =============================
+  // BACKFILL BUYING CENTERS
+  // =============================
+  async backfillBuyingCenters() {
+    const since = "2026-01-01T00:00:00.000Z";
+    const startedAt = new Date().toISOString();
+
+    try {
+      console.log("Starting buying center backfill...");
+
+      // Step 1: Fetch CMS buying centers
+      const cmsBCs = await this.fetchCmsData("buying-centers", since);
+      console.log(`Fetched ${cmsBCs.length} CMS buying centers`);
+
+      // Step 2: Get all WB buying centers
+      const wbBCsResult = await db.query(
+        `SELECT id, cms_id, name FROM tos_buying_center ORDER BY id ASC`,
+      );
+      const wbBCs = wbBCsResult.rows;
+      console.log(`Fetched ${wbBCs.length} WB buying centers`);
+
+      // Step 3: Create a map of CMS BCs by lowercase name
+      const cmsBCMap = new Map();
+      for (const cmsBC of cmsBCs) {
+        const lowerName = (cmsBC.name || "").trim().toLowerCase();
+        cmsBCMap.set(lowerName, cmsBC);
+      }
+
+      // Step 4: Categorize WB BCs
+      const correct = [];
+      const mismatched = [];
+      const orphan = [];
+
+      for (const wbBC of wbBCs) {
+        const wbLowerName = (wbBC.name || "").trim().toLowerCase();
+        const cmsMatched = cmsBCMap.get(wbLowerName);
+
+        if (cmsMatched) {
+          // Found a match in CMS by name
+          if (wbBC.cms_id === cmsMatched.id) {
+            // CMS IDs match perfectly
+            correct.push(wbBC);
+          } else {
+            // Mismatch: name matches but cms_id is wrong
+            mismatched.push({
+              wbBC,
+              cms_matched: cmsMatched,
+            });
+          }
+        } else {
+          // No match found in CMS
+          orphan.push(wbBC);
+        }
+      }
+
+      console.log(
+        `Categorized: ${correct.length} correct, ${mismatched.length} mismatched, ${orphan.length} orphan`,
+      );
+
+      const report = {
+        started_at: startedAt,
+        cms_bcs_fetched: cmsBCs.length,
+        wb_bcs_total: wbBCs.length,
+        categorized: {
+          correct: correct.length,
+          mismatched: mismatched.length,
+          orphan: orphan.length,
+        },
+        actions: {
+          orders_updated: 0,
+          bcs_deleted: 0,
+          bcs_deactivated: 0,
+        },
+        details: {
+          deleted_bc_ids: [],
+          deactivated_bc_ids: [],
+          updated_order_ids: [],
+        },
+      };
+
+      // =============================
+      // Step 5: Handle mismatched BCs
+      // =============================
+      for (const mismatch of mismatched) {
+        const { wbBC, cms_matched } = mismatch;
+
+        // Find the correct WB BC (the one with cms_id = cms_matched.id)
+        const correctBC = wbBCs.find((bc) => bc.cms_id === cms_matched.id);
+
+        if (correctBC) {
+          console.log(
+            `Mismatched BC id=${wbBC.id} (name="${wbBC.name}") → updating orders to correct BC id=${correctBC.id}`,
+          );
+
+          // Find orders linked to this mismatched BC
+          const ordersResult = await db.query(
+            `SELECT id FROM tos_delivery_orders WHERE buying_center_id = $1`,
+            [wbBC.id],
+          );
+          const orderIds = ordersResult.rows.map((r) => r.id);
+
+          // Update orders to point to correct BC
+          if (orderIds.length > 0) {
+            await db.query(
+              `UPDATE tos_delivery_orders SET buying_center_id = $1 WHERE buying_center_id = $2`,
+              [correctBC.id, wbBC.id],
+            );
+            report.actions.orders_updated += orderIds.length;
+            report.details.updated_order_ids.push(...orderIds);
+            console.log(
+              `Updated ${orderIds.length} orders for BC id=${wbBC.id}`,
+            );
+          }
+
+          // Delete the mismatched BC
+          await db.query(`DELETE FROM tos_buying_center WHERE id = $1`, [
+            wbBC.id,
+          ]);
+          report.actions.bcs_deleted += 1;
+          report.details.deleted_bc_ids.push(wbBC.id);
+          console.log(`Deleted mismatched BC id=${wbBC.id}`);
+        }
+      }
+
+      // =============================
+      // Step 6: Handle orphan BCs
+      // =============================
+      for (const orphanBC of orphan) {
+        // Check if linked to any orders
+        const ordersResult = await db.query(
+          `SELECT id FROM tos_delivery_orders WHERE buying_center_id = $1`,
+          [orphanBC.id],
+        );
+        const isLinked = ordersResult.rows.length > 0;
+
+        if (isLinked) {
+          // Deactivate instead of deleting
+          await db.query(
+            `UPDATE tos_buying_center SET is_active = false WHERE id = $1`,
+            [orphanBC.id],
+          );
+          report.actions.bcs_deactivated += 1;
+          report.details.deactivated_bc_ids.push(orphanBC.id);
+          console.log(
+            `Deactivated orphan BC id=${orphanBC.id} (linked to ${ordersResult.rows.length} orders)`,
+          );
+        } else {
+          // No orders linked, safe to delete
+          await db.query(`DELETE FROM tos_buying_center WHERE id = $1`, [
+            orphanBC.id,
+          ]);
+          report.actions.bcs_deleted += 1;
+          report.details.deleted_bc_ids.push(orphanBC.id);
+          console.log(`Deleted orphan BC id=${orphanBC.id} (no linked orders)`);
+        }
+      }
+
+      report.finished_at = new Date().toISOString();
+
+      return {
+        success: true,
+        message: "Buying center backfill completed",
+        ...report,
+      };
+    } catch (error) {
+      console.error("Buying center backfill failed:", error.message);
+      console.error(error);
+      return {
+        success: false,
+        message: "Buying center backfill failed",
+        error: error.message,
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+      };
+    }
+  }
 }
 
 module.exports = new SyncService();
