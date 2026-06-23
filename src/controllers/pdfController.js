@@ -9,6 +9,7 @@ const QRCode = require("qrcode");
 const { DateTime } = require("luxon");
 const { getUser } = require("../services/usersService");
 const printerConfig = require("../config/printerConfig");
+const { autoPrintReceiptDotMatrix } = require("./dotMatrixPrintController");
 
 function getCottonTypeCode(buyingCenter) {
   const cottonTypeId = Number(buyingCenter?.cotton_type_id);
@@ -120,12 +121,17 @@ async function generatePDFHandler(req, res) {
   }
 }
 async function generateReceiptHandler(req, res) {
-  const { order_no } = req.query;
+  const { order_no, print_machine } = req.query;
 
   if (!order_no || typeof order_no !== "string" || order_no.trim() === "") {
     return res
       .status(400)
       .json({ error: "Invalid or missing order_no parameter" });
+  }
+
+  if (print_machine && print_machine.toLowerCase() === "dotmatrix") {
+    await autoPrintReceiptDotMatrix(order_no, res, req.user);
+    return;
   }
 
   await autoPrintReceipt(order_no, res, req.user);

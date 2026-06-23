@@ -16,14 +16,22 @@ const pool = new Pool({
 });
 
 const updateFinishedOrderMeasurements = async (deliveryOrderId, orderItems) => {
-  if (!deliveryOrderId || !Array.isArray(orderItems) || orderItems.length === 0) {
+  if (
+    !deliveryOrderId ||
+    !Array.isArray(orderItems) ||
+    orderItems.length === 0
+  ) {
     return;
   }
 
   for (const item of orderItems) {
     const measurement = item.quantity ?? item.measurement;
 
-    if (measurement === null || measurement === undefined || measurement === "") {
+    if (
+      measurement === null ||
+      measurement === undefined ||
+      measurement === ""
+    ) {
       continue;
     }
 
@@ -410,6 +418,10 @@ const createOrUpdateActivity = async (
         tareWeightResult.rows.length === 0 ||
         tareWeightResult.rows[0].tare_weight === null
       ) {
+        console.log("No valid tare weight found for this delivery order", [
+          order.id,
+          tareWeightResult,
+        ]);
         return {
           success: false,
           message: "No valid tare weight found for this delivery order",
@@ -873,10 +885,16 @@ const createOrUpdateActivityV2 = async (data, user) => {
 // Helper function to get tare weight AND isactive = true
 const getTareWeight = async (id) => {
   console.log("received id", id);
+  // const getTareWeightQuery = `
+  //   SELECT tare_weight
+  //   FROM tos_activities
+  //   WHERE (id = $1 OR delivery_order_id = $1)
+  //     AND activity_type = 10
+  // `;
   const getTareWeightQuery = `
-    SELECT tare_weight 
-    FROM tos_activities 
-    WHERE id = $1 AND activity_type = 10 
+    SELECT tare_weight
+    FROM tos_activities
+    WHERE id = $1 AND activity_type = 10
   `;
   const tareWeightResult = await pool.query(getTareWeightQuery, [id]);
   console.log("Tare weight:: ", id);
