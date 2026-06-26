@@ -1428,8 +1428,9 @@ const getTruckActivities = async (search, weighbridge_id, editing) => {
     const queryParams = [];
     let paramIndex = 1;
 
-    let whereClause = `WHERE created_time >= NOW() - INTERVAL '${
-      editing ? 30 : 40
+    let whereClause = 
+    `WHERE created_time >= NOW() - INTERVAL '${
+      editing ? 600 : 900
     } seconds'`;
 
     if (weighbridge_id) {

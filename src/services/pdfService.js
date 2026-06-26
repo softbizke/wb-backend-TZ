@@ -465,6 +465,8 @@ const getprocesseddeliveryorders = async (search) => {
         act1.gross_weight AS gross_weight,
         act1.sw_at as gross_time,
         act1.avrg_w AS avrg_weight,
+        act1.sw_at AS sw_at,
+        act1.updated_at AS activity_updated_at,
 
         sup.name AS supplier,
 

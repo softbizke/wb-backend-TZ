@@ -10,6 +10,9 @@ const { DateTime } = require("luxon");
 const { getUser } = require("../services/usersService");
 const printerConfig = require("../config/printerConfig");
 const { autoPrintReceiptDotMatrix } = require("./dotMatrixPrintController");
+const {
+  generateDeliveryOrderPDF,
+} = require("./GeneratedeliveryorderpdfController");
 
 function getCottonTypeCode(buyingCenter) {
   const cottonTypeId = Number(buyingCenter?.cotton_type_id);
@@ -121,7 +124,14 @@ async function generatePDFHandler(req, res) {
   }
 }
 async function generateReceiptHandler(req, res) {
-  const { order_no, print_machine } = req.query;
+  const { order_no, machine } = req.query;
+
+  console.log(
+    "generateReceiptHandler called with order_no:",
+    order_no,
+    "machine:",
+    machine,
+  );
 
   if (!order_no || typeof order_no !== "string" || order_no.trim() === "") {
     return res
@@ -129,13 +139,25 @@ async function generateReceiptHandler(req, res) {
       .json({ error: "Invalid or missing order_no parameter" });
   }
 
-  if (print_machine && print_machine.toLowerCase() === "dotmatrix") {
+  if (machine && machine.toLowerCase() === "dotmatrix") {
     await autoPrintReceiptDotMatrix(order_no, res, req.user);
+    return;
+  }
+
+  if (machine && machine.toLowerCase() === "pdf") {
+    await generateDeliveryOrderPDFHandler(order_no, res);
     return;
   }
 
   await autoPrintReceipt(order_no, res, req.user);
 }
+
+async function generateDeliveryOrderPDFHandler(order_no, res) {
+  const orderData = await PDFg.getprocesseddeliveryorders(order_no);
+  if (!orderData?.length) return res.status(404).json({ error: "Not found" });
+  await generateDeliveryOrderPDF(orderData[0], res);
+}
+
 async function autoPrintReceipt(order_no, res, auth) {
   try {
     const user = await getUser(auth.id);
