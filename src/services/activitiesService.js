@@ -5,6 +5,7 @@ const { resolveDriverId } = require("./driverService");
 const { resolveCustomerId } = require("./customerService");
 const { resolveSupplierId } = require("./supplierService");
 const { autoPrintReceipt } = require("../controllers/pdfController");
+const syncService = require("./syncService");
 
 // Create a connection pool
 const pool = new Pool({
@@ -824,6 +825,20 @@ const createOrUpdateActivityV2 = async (data, user) => {
       const orderNumber = tos_del.rows[0].order_number;
       console.log("ORDER NUMBER", orderNumber);
 
+      //Run the sync. Dont await so it doesnt block the response.
+      syncService
+        .syncAll("Manual")
+        .then((result) => {
+          if (!result.success) {
+            console.error("Manual sync failed:", result.message);
+          } else {
+            console.log("Manual sync successful:", result.message);
+          }
+        })
+        .catch((error) => {
+          console.error("Manual sync failed:", error);
+        });
+
       return {
         success: true,
         message: "Activity updated successfully",
@@ -870,6 +885,22 @@ const createOrUpdateActivityV2 = async (data, user) => {
       // if (print) {
       //   await autoPrintReceipt(orderNumber, res, req.user);
       // }
+
+      //Run the sync. Dont await so it doesnt block the response.
+
+      syncService
+        .syncAll("Manual")
+        .then((result) => {
+          if (!result.success) {
+            console.error("Manual sync failed:", result.message);
+          } else {
+            console.log("Manual sync successful:", result.message);
+          }
+        })
+        .catch((error) => {
+          console.error("Manual sync failed:", error);
+        });
+
       return {
         success: true,
         message: "Activity record created successfully",
@@ -1428,9 +1459,8 @@ const getTruckActivities = async (search, weighbridge_id, editing) => {
     const queryParams = [];
     let paramIndex = 1;
 
-    let whereClause = 
-    `WHERE created_time >= NOW() - INTERVAL '${
-      editing ? 600 : 900
+    let whereClause = `WHERE created_time >= NOW() - INTERVAL '${
+      editing ? 600 : 1800
     } seconds'`;
 
     if (weighbridge_id) {

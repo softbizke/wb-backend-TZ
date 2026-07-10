@@ -10,6 +10,7 @@ const getCamerasActivityPoint =
 const postnprActivitylog = async (req, res) => {
   // Check if the body is in JSON format or nested format
   console.log("Camera Type 11111111#########", req.query.camera_type);
+  console.log("Received ANPR activity log:", req.body);
   const cameraType = req.query.camera_type || 1;
   let reg_no, camera_id, snap_time;
   let is_unlicensed = false;
@@ -64,6 +65,8 @@ const postnprActivitylog = async (req, res) => {
       .status(400)
       .json({ Success: "False", Error: "Snap time is required" });
   }
+
+  console.log("Received ANPR activity log-validation complete:", { reg_no, camera_id, snap_time, is_unlicensed, cameraType });
 
   let anprActivityId1,
     anprActivityLogId2 = null;

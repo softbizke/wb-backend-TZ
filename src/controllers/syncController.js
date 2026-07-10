@@ -2,6 +2,7 @@ const syncService = require("../services/syncService");
 
 const runSync = async (req, res) => {
   try {
+    
     const result = await syncService.syncAll("Manual");
 
     if (result.skipped) {
