@@ -673,6 +673,7 @@ class SyncService {
         bc.name AS buying_center_name,
         b.name AS branch_name,
         b.code AS branch_code,
+        b.cms_id AS cms_branch_id,
 
         jsonb_build_object(
           'id', drv.id,
