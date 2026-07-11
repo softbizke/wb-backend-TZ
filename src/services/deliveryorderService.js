@@ -68,6 +68,29 @@ const resolveDestinationId = async (client, destination) => {
   return null;
 };
 
+const resolveBranchId = async (client, branchId, buyingCenterId = null) => {
+  if (branchId === undefined || branchId === null || branchId === "") {
+    return null;
+  }
+
+  const params = [branchId];
+  let query = "SELECT cms_id FROM tos_buying_center_branches WHERE cms_id = $1";
+
+  if (buyingCenterId) {
+    params.push(buyingCenterId);
+    query += " AND buying_center_id = $2";
+  }
+
+  query += " LIMIT 1";
+
+  const result = await client.query(query, params);
+  if (result.rows.length === 0) {
+    throw new Error("Buying center branch not found");
+  }
+
+  return result.rows[0].cms_id;
+};
+
 const getOrderMeasurement = (order, fallback = 0) => {
   return order.quantity ?? order.measurement ?? fallback;
 };
@@ -90,6 +113,7 @@ const createDeliveryOrder = async (
   order_items = [],
   transporter_id,
   buying_center_id,
+  branch_id,
   supplier_id,
   purchase_type_id,
   transaction_type,
@@ -203,6 +227,11 @@ const createDeliveryOrder = async (
 
     // ✅ Validate or create supplier
     const validSupplierId = await resolveSupplierId(client, supplier_id);
+    const validBranchId = await resolveBranchId(
+      client,
+      branch_id,
+      validBuyingCenterId,
+    );
 
     // ✅ Validate Purchase Type
     let validPurchaseTypeId = null;
@@ -252,6 +281,7 @@ const createDeliveryOrder = async (
         order_type,
         transporter_id,
         buying_center_id,
+        branch_id,
         supplier_id,
         purchase_type_id,
         dispatch_type_id
@@ -271,9 +301,10 @@ const createDeliveryOrder = async (
         $10, -- order_type
         $11, -- transporter_id
         $12, -- buying_center_id
-        $13, -- supplier_id
-        $14, -- purchase_type_id
-        $15  -- dispatch_type_id
+        $13, -- branch_id
+        $14, -- supplier_id
+        $15, -- purchase_type_id
+        $16  -- dispatch_type_id
       )
       RETURNING order_number;
     `;
@@ -294,6 +325,7 @@ const createDeliveryOrder = async (
       order_type,
       validTransporterId,
       validBuyingCenterId,
+      validBranchId,
       validSupplierId,
       validPurchaseTypeId,
       dispatch_type_id,
@@ -440,6 +472,7 @@ const createDeliveryAndFinishedOrder = async (
   packing_type_id,
   transporter_id,
   buying_center_id,
+  branch_id,
   supplier_id,
   purchase_type_id,
   order_items,
@@ -489,6 +522,11 @@ const createDeliveryAndFinishedOrder = async (
       "Buying center",
     );
     const validSupplierId = await resolveSupplierId(client, supplier_id);
+    const validBranchId = await resolveBranchId(
+      client,
+      branch_id,
+      validBuyingCenterId,
+    );
     const validPurchaseTypeId = await validateActive(
       "tos_purchase_type",
       purchase_type_id,
@@ -498,10 +536,10 @@ const createDeliveryAndFinishedOrder = async (
     // ✅ Insert new delivery order
     const insertDeliveryOrderQuery = `
       INSERT INTO tos_delivery_orders
-      (order_number, truck_no, trailler_no, customer_id, driver_id, measurement, product_type_id, packing_type_id, transporter_id, buying_center_id, supplier_id, purchase_type_id, isactive)
+      (order_number, truck_no, trailler_no, customer_id, driver_id, measurement, product_type_id, packing_type_id, transporter_id, buying_center_id, branch_id, supplier_id, purchase_type_id, isactive)
       VALUES (
         CONCAT(TO_CHAR(CURRENT_DATE, 'YYYYMMDD'), LPAD(nextval('delivery_order_seq')::text, 4, '0')),
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true
       )
       RETURNING id;
     `;
@@ -515,6 +553,7 @@ const createDeliveryAndFinishedOrder = async (
       validPackingId,
       validTransporterId,
       validBuyingCenterId,
+      validBranchId,
       validSupplierId,
       validPurchaseTypeId,
     ]);
@@ -600,6 +639,7 @@ const createDeliveryAndFinishedOrderV2 = async (
   packing_type_id,
   transporter_id,
   buying_center_id,
+  branch_id,
   supplier_id,
   purchase_type_id,
   dispatch_type_id,
@@ -661,6 +701,11 @@ const createDeliveryAndFinishedOrderV2 = async (
       "Buying center",
     );
     const validSupplierId = await resolveSupplierId(client, supplier_id);
+    const validBranchId = await resolveBranchId(
+      client,
+      branch_id,
+      validBuyingCenterId,
+    );
     const validPurchaseTypeId = await validateActive(
       "tos_purchase_type",
       purchase_type_id,
@@ -678,10 +723,11 @@ const createDeliveryAndFinishedOrderV2 = async (
           packing_type_id = $5,
           transporter_id = $6,
           buying_center_id = $7,
-          supplier_id = $8,
-          purchase_type_id = $9,
-          dispatch_type_id = $10
-      WHERE id = $11 AND isactive = true
+          branch_id = $8,
+          supplier_id = $9,
+          purchase_type_id = $10,
+          dispatch_type_id = $11
+      WHERE id = $12 AND isactive = true
     `;
 
     console.log("I a m here 12222");
@@ -693,6 +739,7 @@ const createDeliveryAndFinishedOrderV2 = async (
       validPackingId,
       validTransporterId,
       validBuyingCenterId,
+      validBranchId,
       validSupplierId,
       validPurchaseTypeId,
       dispatch_type_id || null,
@@ -823,8 +870,25 @@ const getAllDeliveryorders = async (
 
         jsonb_build_object(
           'id', buyc.id,
-          'title', buyc.name
+          'title', buyc.name,
+          'village', buyc.village_name,
+          'cotton_type', buyc.cotton_type_name,
+          'is_multiple_branches', buyc.is_multiple_branches,
+          'branch_id', ord.branch_id,
+          'branch', jsonb_build_object(
+            'id', b.cms_id,
+            'code', b.code,
+            'name', b.name,
+            'population', b.population
+          )
         ) AS buying_center,
+
+        jsonb_build_object(
+          'id', b.cms_id,
+          'code', b.code,
+          'name', b.name,
+          'population', b.population
+        ) AS branch,
 
         jsonb_build_object(
           'id', purchtype.id,
@@ -842,6 +906,7 @@ const getAllDeliveryorders = async (
       LEFT JOIN tos_suppliers supp ON supp.id = ord.supplier_id
       LEFT JOIN tos_transporter trans ON trans.id = ord.transporter_id
       LEFT JOIN tos_buying_center buyc ON buyc.id = ord.buying_center_id
+      LEFT JOIN tos_buying_center_branches b ON b.cms_id = ord.branch_id
       LEFT JOIN tos_purchase_type purchtype ON purchtype.id = ord.purchase_type_id
       -- LEFT JOIN tos_product_type prodty ON prodty.id = ord.product_type_id
       LEFT JOIN tos_packing_type packty ON packty.id = ord.packing_type_id

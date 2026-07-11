@@ -330,6 +330,10 @@ async function autoPrintReceiptDotMatrix(order_no, res, auth) {
           "Centre",
           `${buying_center.code ?? "N/A"} – ${buying_center.title ?? "N/A"}`,
         );
+        L.kv(
+          "Branch",
+          `${buying_center.branch?.code ?? "N/A"} - ${buying_center.branch?.name ?? "N/A"}`,
+        );
         L.kv("Cotton Type", getCottonTypeCode(buying_center));
         L.rule("─");
       }

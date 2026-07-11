@@ -205,12 +205,12 @@ class SyncService {
         const villageId = c.cms_village_id ?? c.cms_zone_id;
         const villageName = c.village_name ?? c.zone_name;
 
-        await db.query(
+        const buyingCenterResult = await db.query(
           `
           INSERT INTO tos_buying_center (
-            cms_id, code, name, distance, is_active, updated_at, cms_village_id, village_name, cms_cotton_type_id, cotton_type_name
+            cms_id, code, name, distance, is_active, updated_at, cms_village_id, village_name, cms_cotton_type_id, cotton_type_name, is_multiple_branches
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
           ON CONFLICT (cms_id)
           DO UPDATE SET
             code = EXCLUDED.code,
@@ -221,7 +221,9 @@ class SyncService {
             cms_village_id = EXCLUDED.cms_village_id,
             village_name = EXCLUDED.village_name,
             cms_cotton_type_id = EXCLUDED.cms_cotton_type_id,
-            cotton_type_name = EXCLUDED.cotton_type_name;
+            cotton_type_name = EXCLUDED.cotton_type_name,
+            is_multiple_branches = EXCLUDED.is_multiple_branches
+          RETURNING id;
         `,
           [
             c.id,
@@ -234,7 +236,13 @@ class SyncService {
             villageName,
             c.cms_cotton_type_id,
             c.cotton_type_name,
+            Boolean(c.is_multi_village ?? c.is_multiple_branches),
           ],
+        );
+
+        await this.upsertBuyingCenterBranches(
+          buyingCenterResult.rows[0].id,
+          c.branches,
         );
 
         if (!latestTimestamp || c.updated_at > latestTimestamp) {
@@ -394,6 +402,9 @@ class SyncService {
         zone_name: villageName,
         cms_cotton_type_id: center.cms_cotton_type_id,
         cotton_type_name: center.cotton_type_name,
+        is_multiple_branches: Boolean(
+          center.is_multi_village ?? center.is_multiple_branches,
+        ),
       };
 
       const existingId = await this.findExistingManualRow(
@@ -413,9 +424,16 @@ class SyncService {
           existingId,
           row,
         );
+        await this.upsertBuyingCenterBranches(existingId, center.branches);
         result.updated += 1;
       } else {
         await this.insertManualRow("tos_buying_center", columns, row);
+        const insertedId = await this.findExistingManualRow(
+          "tos_buying_center",
+          columns,
+          [{ column: "cms_id", value: center.id }],
+        );
+        await this.upsertBuyingCenterBranches(insertedId, center.branches);
         result.inserted += 1;
       }
     }
@@ -425,6 +443,52 @@ class SyncService {
     );
 
     return result;
+  }
+
+  async upsertBuyingCenterBranches(buyingCenterId, branches = []) {
+    if (!buyingCenterId || !Array.isArray(branches)) return;
+
+    const cmsIds = [];
+
+    for (const branch of branches) {
+      if (!branch?.id) continue;
+
+      cmsIds.push(branch.id);
+
+      await db.query(
+        `
+          INSERT INTO tos_buying_center_branches (
+            buying_center_id, cms_id, code, name, population, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+          ON CONFLICT (cms_id)
+          DO UPDATE SET
+            buying_center_id = EXCLUDED.buying_center_id,
+            code = EXCLUDED.code,
+            name = EXCLUDED.name,
+            population = EXCLUDED.population,
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        [
+          buyingCenterId,
+          branch.id,
+          branch.code,
+          branch.name,
+          branch.population,
+        ],
+      );
+    }
+
+    if (cmsIds.length > 0) {
+      await db.query(
+        `
+          DELETE FROM tos_buying_center_branches
+          WHERE buying_center_id = $1
+            AND cms_id <> ALL($2::bigint[])
+        `,
+        [buyingCenterId, cmsIds],
+      );
+    }
   }
 
   async findExistingManualRow(tableName, columns, matchers) {
@@ -602,10 +666,13 @@ class SyncService {
         ord.transporter_id,
         ord.purchase_type_id,
         ord.dispatch_type_id,
+        ord.branch_id,
 
         bc.id AS buying_center_id,
         bc.cms_id AS buying_center_cms_id,
         bc.name AS buying_center_name,
+        b.name AS branch_name,
+        b.code AS branch_code,
 
         jsonb_build_object(
           'id', drv.id,
@@ -635,8 +702,23 @@ class SyncService {
           'id', bc.id,
           'title', bc.name,
           'village', bc.village_name,
-          'cotton_type', bc.cotton_type_name
+          'cotton_type', bc.cotton_type_name,
+          'is_multiple_branches', bc.is_multiple_branches,
+          'branch_id', ord.branch_id,
+          'branch', jsonb_build_object(
+            'id', b.cms_id,
+            'code', b.code,
+            'name', b.name,
+            'population', b.population
+          )
         ) AS buying_center,
+
+        jsonb_build_object(
+          'id', b.cms_id,
+          'code', b.code,
+          'name', b.name,
+          'population', b.population
+        ) AS branch,
 
         jsonb_build_object(
           'id', pt.id,
@@ -759,6 +841,9 @@ class SyncService {
       INNER JOIN tos_buying_center bc
         ON bc.id = ord.buying_center_id
 
+      LEFT JOIN tos_buying_center_branches b
+        ON b.cms_id = ord.branch_id
+
       LEFT JOIN tos_finished_orders f_ord
         ON f_ord.delivery_order_id = ord.id
 
@@ -799,6 +884,7 @@ class SyncService {
         act.id,
         ord.id,
         bc.id,
+        b.id,
         drv.id,
         cust.id,
         supp.id,

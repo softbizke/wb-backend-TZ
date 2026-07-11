@@ -259,6 +259,9 @@ async function autoPrintReceipt(order_no, res, auth) {
                 .text(
                   `Center : ${buying_center.code ?? "N/A"} - ${buying_center.title ?? "N/A"}`,
                 )
+                .text(
+                  `Branch : ${buying_center.branch?.code ?? "N/A"} - ${buying_center.branch?.name ?? "N/A"}`,
+                )
                 .text(`Cotton Type : ${getCottonTypeCode(buying_center)}`)
                 .drawLine()
                 .newLine();

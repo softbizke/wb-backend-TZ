@@ -16,6 +16,7 @@ const createDeliveryOrder = async (req, res) => {
     order_items = [],
     transporter_id,
     buying_center_id,
+    branch_id,
     supplier_id,
     purchase_type_id,
     transaction_type,
@@ -52,6 +53,7 @@ const createDeliveryOrder = async (req, res) => {
       order_items,
       transporter_id,
       buying_center_id,
+      branch_id,
       supplier_id,
       purchase_type_id,
       transaction_type,
@@ -94,6 +96,7 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       order_items,
       transporter_id,
       buying_center_id,
+      branch_id,
       purchase_type_id,
       dispatch_type_id,
     } = req.body;
@@ -121,6 +124,7 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       1, //packing_type,
       transporter_id || null,
       buying_center_id || null,
+      branch_id || null,
       supplier_id || null, // Pass null if undefined
       purchase_type_id || null,
       dispatch_type_id || null,

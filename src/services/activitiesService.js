@@ -529,6 +529,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
     order_items = [],
     transporter_id,
     buying_center_id,
+    branch_id,
     supplier_id,
     purchase_type_id,
     transaction_type,
@@ -565,6 +566,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         order_items,
         transporter_id,
         buying_center_id,
+        branch_id,
         supplier_id,
         purchase_type_id,
         transaction_type,
@@ -602,7 +604,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
       // Insert the WBIN activity
       const insertActivityQuery = `
         INSERT INTO tos_activities 
-        (delivery_order_id, activity_type, truck_no, trailler_no, tare_weight, isactive, images, weighbridge_details,fw_at,fw_by,fw_wb, avrg_w) 
+        (delivery_order_id, activity_type, truck_no, trailler_no, tare_weight, isactive, images, weighbridge_details,fw_at,fw_by,fw_wb, avrg_w)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11)
         RETURNING id
       `;
@@ -754,6 +756,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         order_type,
         transporter_id,
         buying_center_id,
+        branch_id,
         supplier_id: resolvedSupplierId,
         purchase_type_id,
         dispatch_type_id,
@@ -850,7 +853,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
       console.log("Order", order);
       const insertActivityQuery = `
       INSERT INTO tos_activities 
-      (delivery_order_id, activity_type, truck_no, trailler_no, tare_weight, gross_weight, qty, isactive, images, weighbridge_details, fw_at) 
+      (delivery_order_id, activity_type, truck_no, trailler_no, tare_weight, gross_weight, qty, isactive, images, weighbridge_details, fw_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,NOW())
     `;
       await pool.query(insertActivityQuery, [
@@ -1250,6 +1253,7 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
         ord.supplier_id,
         ord.transporter_id,
         ord.buying_center_id,
+        ord.branch_id,
         ord.purchase_type_id,
         ord.dispatch_type_id,
         ord.created_at,
@@ -1287,8 +1291,23 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
           'id', bc.id,
           'title', bc.name,
           'village', bc.village_name,
-          'cotton_type', bc.cotton_type_name
+          'cotton_type', bc.cotton_type_name,
+          'is_multiple_branches', bc.is_multiple_branches,
+          'branch_id', ord.branch_id,
+          'branch', jsonb_build_object(
+            'id', b.cms_id,
+            'code', b.code,
+            'name', b.name,
+            'population', b.population
+          )
         ) AS buying_center,
+
+        jsonb_build_object(
+          'id', b.cms_id,
+          'code', b.code,
+          'name', b.name,
+          'population', b.population
+        ) AS branch,
 
         -- 💰 Purchase Type
         jsonb_build_object(
@@ -1422,6 +1441,7 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
       LEFT JOIN tos_suppliers supp ON ord.supplier_id = supp.id
       LEFT JOIN tos_transporter trans ON ord.transporter_id = trans.id
       LEFT JOIN tos_buying_center bc ON ord.buying_center_id = bc.id
+      LEFT JOIN tos_buying_center_branches b ON b.cms_id = ord.branch_id
       LEFT JOIN tos_dispatch_type dt ON ord.dispatch_type_id = dt.id
       LEFT JOIN tos_purchase_type pt ON ord.purchase_type_id = pt.id
       -- LEFT JOIN tos_product_type prodty ON ord.product_type_id = prodty.id
@@ -1435,7 +1455,7 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
       ${whereSQL}
 
       GROUP BY 
-        ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, pt.id, dt.id,
+        ord.id, drv.id, cust.id, supp.id, trans.id, bc.id, b.id, pt.id, dt.id,
         -- prodty.id,
         packty.id, dest.id, act10.id, act20.id,
         sw_ap.id, fw_ap.id, fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id
@@ -1601,6 +1621,7 @@ const getActivity = async (delivery_order_id) => {
         ord.isactive,
         ord.do_no,
         ord.order_type,
+        ord.branch_id,
 
         -- Related main entities
         cust.id AS customer_id,
@@ -1642,8 +1663,25 @@ const getActivity = async (delivery_order_id) => {
         -- 🏬 Buying Center
         jsonb_build_object(
           'id', bc.id,
-          'title', bc.name
+          'title', bc.name,
+          'village', bc.village_name,
+          'cotton_type', bc.cotton_type_name,
+          'is_multiple_branches', bc.is_multiple_branches,
+          'branch_id', ord.branch_id,
+          'branch', jsonb_build_object(
+            'id', b.cms_id,
+            'code', b.code,
+            'name', b.name,
+            'population', b.population
+          )
         ) AS buying_center,
+
+        jsonb_build_object(
+          'id', b.cms_id,
+          'code', b.code,
+          'name', b.name,
+          'population', b.population
+        ) AS branch,
 
         -- 💰 Purchase Type
         jsonb_build_object(
@@ -1741,6 +1779,7 @@ const getActivity = async (delivery_order_id) => {
       LEFT JOIN tos_wheat_type wtype ON wtype.id = ord.wheat_type_id
       LEFT JOIN tos_suppliers supp ON supp.id = ord.supplier_id
       LEFT JOIN tos_buying_center bc ON bc.id = ord.buying_center_id
+      LEFT JOIN tos_buying_center_branches b ON b.cms_id = ord.branch_id
       LEFT JOIN tos_transporter transp ON transp.id = ord.transporter_id
       LEFT JOIN tos_purchase_type pt ON pt.id = ord.purchase_type_id
     `;
@@ -1759,7 +1798,7 @@ const getActivity = async (delivery_order_id) => {
 
     query += `
       GROUP BY 
-        ord.id, cust.id, drv.id, supp.id, transp.id, bc.id, pt.id, 
+        ord.id, cust.id, drv.id, supp.id, transp.id, bc.id, b.id, pt.id,
         -- ptype.id,
         packtype.id, dest.id, act10.id, act20.id,
         fw10_user.id, sw10_user.id, fw20_user.id, sw20_user.id

@@ -142,6 +142,16 @@ function drawCopy(doc, data, user, startY, copyH, copyLabel) {
   doc.text("Zone", MID - 28, y);
   doc.font("Helvetica").fontSize(FS);
   doc.text(buying_center?.village ?? "N/A", MID - 4, y);
+  y += ROW_H;
+
+  doc.font("Helvetica").fontSize(FS_LABEL);
+  doc.text("Branch", L, y);
+  doc.font("Helvetica").fontSize(FS);
+  doc.text(
+    `${buying_center?.branch?.code ?? "N/A"} - ${buying_center?.branch?.name ?? "N/A"}`,
+    L + 70,
+    y,
+  );
 
   //   doc.font("Helvetica").fontSize(FS_LABEL);
   //   doc.text("Zone", R - 75, y);

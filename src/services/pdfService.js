@@ -442,6 +442,7 @@ const getprocesseddeliveryorders = async (search) => {
         ord.truck_no,
         ord.trailler_no,
         ord.order_number,
+        ord.branch_id,
 
         cust.name AS customer,
         cust.bp_code AS customer_code,
@@ -477,8 +478,23 @@ const getprocesseddeliveryorders = async (search) => {
           'title', bc.name,
           'village', bc.village_name,
           'cotton_type_id', bc.cms_cotton_type_id,
-          'cotton_type', bc.cotton_type_name
-        ) AS buying_center
+          'cotton_type', bc.cotton_type_name,
+          'is_multiple_branches', bc.is_multiple_branches,
+          'branch_id', ord.branch_id,
+          'branch', jsonb_build_object(
+            'id', b.cms_id,
+            'code', b.code,
+            'name', b.name,
+            'population', b.population
+          )
+        ) AS buying_center,
+
+        jsonb_build_object(
+          'id', b.cms_id,
+          'code', b.code,
+          'name', b.name,
+          'population', b.population
+        ) AS branch
               
       FROM tos_delivery_orders ord
 
@@ -505,6 +521,9 @@ const getprocesseddeliveryorders = async (search) => {
 
       LEFT JOIN tos_buying_center bc 
         ON ord.buying_center_id = bc.id
+
+      LEFT JOIN tos_buying_center_branches b
+        ON b.cms_id = ord.branch_id
 
 
       LEFT JOIN tos_purchase_type pt 

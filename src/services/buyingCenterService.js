@@ -39,15 +39,34 @@ const createOrUpdateBuyingCenter = async (name, is_active) => {
 
 const getAllBuyingCenters = async (search) => {
   try {
-    let query = "SELECT * FROM tos_buying_center";
+    let query = `
+      SELECT
+        bc.*,
+        COALESCE(
+          json_agg(
+            jsonb_build_object(
+              'id', b.cms_id,
+              'local_id', b.id,
+              'code', b.code,
+              'name', b.name,
+              'population', b.population
+            )
+            ORDER BY b.name ASC
+          ) FILTER (WHERE b.id IS NOT NULL),
+          '[]'::json
+        ) AS branches
+      FROM tos_buying_center bc
+      LEFT JOIN tos_buying_center_branches b
+        ON b.buying_center_id = bc.id
+    `;
     const params = [];
 
     if (search && search.trim() !== "") {
-      query += " WHERE name ILIKE $1";
+      query += " WHERE bc.name ILIKE $1";
       params.push(`%${search}%`);
     }
 
-    query += " ORDER BY name ASC";
+    query += " GROUP BY bc.id ORDER BY bc.name ASC";
     const result = await pool.query(query, params);
     return result.rows;
   } catch (error) {
