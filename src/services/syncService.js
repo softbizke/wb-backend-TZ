@@ -21,6 +21,7 @@ const API_KEY = WEIGHBRIDGE_CMS_API_KEY;
 class SyncService {
   constructor() {
     this.isRunning = false;
+    this.rerunRequested = false;
   }
 
   // =============================
@@ -28,11 +29,13 @@ class SyncService {
   // =============================
   async syncAll(source = "Manual") {
     if (this.isRunning) {
-      console.log("Skipping sync, already running...");
+      this.rerunRequested = true;
+      console.log("Sync already running; queued one follow-up sync...");
       return {
-        success: false,
-        skipped: true,
-        message: "Sync already running",
+        success: true,
+        skipped: false,
+        queued: true,
+        message: "Sync queued behind the current run",
       };
     }
 
@@ -40,10 +43,18 @@ class SyncService {
     const startedAt = new Date().toISOString();
 
     try {
-      console.log(`${source} sync running...`);
-      await this.syncDrivers();
-      await this.syncBuyingCenters();
-      await this.syncWeighbridge();
+      do {
+        this.rerunRequested = false;
+        console.log(`${source} sync running...`);
+        await this.syncDrivers();
+        await this.syncBuyingCenters();
+        await this.syncWeighbridge();
+
+        if (this.rerunRequested) {
+          source = "Queued";
+          console.log("Starting queued follow-up sync...");
+        }
+      } while (this.rerunRequested);
 
       return {
         success: true,
@@ -605,7 +616,7 @@ class SyncService {
       WHERE
         act.activity_type IN (10,20)
         AND act.sw_at IS NOT NULL
-        AND act.sw_at < NOW() - INTERVAL '30 seconds'
+        -- AND act.sw_at < NOW() - INTERVAL '30 seconds'
         AND act.qty IS NOT NULL
         AND act.gross_weight IS NOT NULL
         AND bc.cms_id IS NOT NULL

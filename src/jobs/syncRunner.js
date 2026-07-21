@@ -7,7 +7,7 @@ const syncService = require("../services/syncService");
   await syncService.syncAll("Initial");
 })();
 
-// Run every hour (at minute 0)
-schedule.scheduleJob("0 * * * *", async () => {
+// Run every minute
+schedule.scheduleJob("* * * * *", async () => {
   await syncService.syncAll("Scheduled");
 });
