@@ -137,7 +137,8 @@ const getAllProducts = async (search) => {
         prod.id,
         prod.name,
         prod.isactive,
-        prod.item_code
+        prod.item_code,
+        prod.cms_id
       FROM tos_product prod
     `;
 

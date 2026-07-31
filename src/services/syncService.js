@@ -19,9 +19,11 @@ const API_URL = WEIGHBRIDGE_CMS_API_URL + "/wb";
 const API_KEY = WEIGHBRIDGE_CMS_API_KEY;
 
 class SyncService {
-  constructor() {
+  constructor(dependencies = {}) {
     this.isRunning = false;
     this.rerunRequested = false;
+    this.db = dependencies.db || db;
+    this.http = dependencies.http || axios;
   }
 
   // =============================
@@ -48,6 +50,7 @@ class SyncService {
         console.log(`${source} sync running...`);
         await this.syncDrivers();
         await this.syncBuyingCenters();
+        await this.syncOperationalProducts();
         await this.syncWeighbridge();
 
         if (this.rerunRequested) {
@@ -103,6 +106,128 @@ class SyncService {
     `,
       [key, value],
     );
+  }
+
+  // =============================
+  // SYNC OPERATIONAL PRODUCTS
+  // cms_id is the authoritative CMS identity. response.id is only a temporary
+  // migration aid for attaching cms_id to products already present in WB.
+  // New CMS products have no response.id and receive a DB-generated WB id.
+  // =============================
+  async syncOperationalProducts() {
+    const syncKey = "operational_products_last_sync";
+    const lastSync = await this.getLastSync(syncKey);
+    let url = `${API_URL}/operational-products`;
+
+    if (lastSync) {
+      url += `?since=${encodeURIComponent(lastSync)}`;
+    }
+
+    const response = await this.http.get(url, {
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        Accept: "application/json",
+      },
+    });
+    const products = response.data?.data || [];
+    const unmatched = [];
+    let inserted = 0;
+    let updated = 0;
+    let latestTimestamp = lastSync;
+
+    for (const product of products) {
+      if (product.cms_id == null) {
+        unmatched.push({
+          id: product.id,
+          cms_id: product.cms_id,
+          name: product.name,
+          reason: "missing cms_id",
+        });
+        continue;
+      }
+
+      // Normal path: an already-linked product is always found by cms_id,
+      // regardless of whether CMS still sends the legacy WB id.
+      let result = await this.db.query(
+        `
+          UPDATE tos_product
+          SET name = $1, isactive = $2
+          WHERE cms_id = $3
+          RETURNING id
+        `,
+        [product.name, product.isactive, product.cms_id],
+      );
+
+      if (result.rows.length > 0) {
+        updated += 1;
+      } else if (product.id != null) {
+        // Migration path: link a known local product only if it has not
+        // already been linked to a different CMS product.
+        result = await this.db.query(
+          `
+            UPDATE tos_product
+            SET cms_id = $1, name = $2, isactive = $3
+            WHERE id = $4
+              AND cms_id IS NULL
+            RETURNING id
+          `,
+          [product.cms_id, product.name, product.isactive, product.id],
+        );
+
+        if (result.rows.length > 0) {
+          updated += 1;
+        } else {
+          unmatched.push({
+            id: product.id,
+            cms_id: product.cms_id,
+            name: product.name,
+            reason:
+              "weighbridge id not found or already linked to another cms_id",
+          });
+          continue;
+        }
+      } else {
+        // New CMS product: omit id so PostgreSQL uses tos_product_id_seq.
+        await this.db.query(
+          `
+            INSERT INTO tos_product (cms_id, name, isactive)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (cms_id)
+            DO UPDATE SET
+              name = EXCLUDED.name,
+              isactive = EXCLUDED.isactive
+          `,
+          [product.cms_id, product.name, product.isactive],
+        );
+        inserted += 1;
+      }
+
+      if (
+        product.updated_at &&
+        (!latestTimestamp || product.updated_at > latestTimestamp)
+      ) {
+        latestTimestamp = product.updated_at;
+      }
+    }
+
+    if (unmatched.length > 0) {
+      console.error("Unmatched CMS operational products:", unmatched);
+      // Do not move the cursor past unmatched products; this lets a later run
+      // retry them after the corresponding local product exists.
+    } else if (latestTimestamp) {
+      await this.setLastSync(syncKey, latestTimestamp);
+    }
+
+    console.log(
+      `Synced ${inserted + updated} operational products (${inserted} inserted, ${updated} updated); ${unmatched.length} invalid`,
+    );
+
+    return {
+      received: products.length,
+      inserted,
+      updated,
+      unmatched,
+    };
   }
 
   // =============================
@@ -620,9 +745,16 @@ class SyncService {
         AND act.qty IS NOT NULL
         AND act.gross_weight IS NOT NULL
         AND bc.cms_id IS NOT NULL
-        AND (
-          product.id = 18
-          OR TRIM(LOWER(product.name)) = 'seed cotton'
+        AND EXISTS (
+          SELECT 1
+          FROM tos_finished_orders eligible_order
+          INNER JOIN tos_product eligible_product
+            ON eligible_product.id = eligible_order.product_id
+          WHERE eligible_order.delivery_order_id = ord.id
+            AND (
+              eligible_product.id = 18
+              OR TRIM(LOWER(eligible_product.name)) = 'seed cotton'
+            )
         )
     `;
 
@@ -760,6 +892,7 @@ class SyncService {
                 * COALESCE(NULLIF(f_ord.measurement, '')::numeric, 0),
               'name', product.name,
               'id', product.id,
+              'cms_id', product.cms_id,
               'sku', product.item_code,
               'unit', f_ord.unit,
               'transaction_type', f_ord.transaction_type,
@@ -921,7 +1054,7 @@ class SyncService {
       LIMIT 500
     `;
 
-      const res = await db.query(query, params);
+      const res = await this.db.query(query, params);
       const rows = res.rows;
 
       if (!rows.length) {
@@ -929,12 +1062,14 @@ class SyncService {
         return;
       }
 
+      validateTicketOperationalProducts(rows);
+
       const chunkSize = 100;
 
       for (let i = 0; i < rows.length; i += chunkSize) {
         const chunk = rows.slice(i, i + chunkSize);
 
-        await axios.post(
+        await this.http.post(
           `${API_URL}/tickets`,
           { data: chunk },
           {
@@ -1801,4 +1936,40 @@ class SyncService {
   }
 }
 
-module.exports = new SyncService();
+const validateTicketOperationalProducts = (tickets) => {
+  for (const ticket of tickets) {
+    const products = Array.isArray(ticket.products) ? ticket.products : [];
+
+    if (products.length === 0) {
+      throw new Error(
+        `Ticket ${ticket.activity_id} has no operational product details`,
+      );
+    }
+
+    const missing = products.find(
+      (product) => product.cms_id === null || product.cms_id === undefined,
+    );
+    if (missing) {
+      throw new Error(
+        `Ticket ${ticket.activity_id} product ${missing.id} is missing cms_id; synchronize operational products before retrying`,
+      );
+    }
+
+    const cmsIds = new Set(products.map((product) => String(product.cms_id)));
+    if (cmsIds.size !== 1) {
+      throw new Error(
+        `Ticket ${ticket.activity_id} contains mixed operational-product cms_id values: ${[
+          ...cmsIds,
+        ].join(", ")}`,
+      );
+    }
+  }
+
+  return tickets;
+};
+
+const syncService = new SyncService();
+module.exports = syncService;
+module.exports.SyncService = SyncService;
+module.exports.validateTicketOperationalProducts =
+  validateTicketOperationalProducts;
