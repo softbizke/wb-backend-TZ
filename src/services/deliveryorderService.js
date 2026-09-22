@@ -95,6 +95,13 @@ const getOrderMeasurement = (order, fallback = 0) => {
   return order.quantity ?? order.measurement ?? fallback;
 };
 
+const {
+  assertLockedProducts,
+  getProductId,
+  normalizeHasGoods,
+  validateCargo,
+} = require("../utils/weighmentValidation");
+
 // Function to create a new delivery order
 const createDeliveryOrder = async (
   truck_no,
@@ -121,10 +128,21 @@ const createDeliveryOrder = async (
   destination,
   packing_id,
   dispatch_type_id,
+  has_goods,
 ) => {
   const client = await pool.connect(); // Get a database client
   try {
     await client.query("BEGIN"); // Start a transaction
+
+    const firstWeightHasGoods = normalizeHasGoods(has_goods, order_items);
+    const cargoError = validateCargo({
+      hasGoods: firstWeightHasGoods,
+      orderItems: order_items,
+    });
+    if (cargoError) {
+      await client.query("ROLLBACK");
+      return { success: false, message: cargoError };
+    }
 
     // Convert truck_no and trailler_no to uppercase if provided
     const truckNoUpperCase = truck_no ? truck_no.toUpperCase().trim() : null;
@@ -284,7 +302,8 @@ const createDeliveryOrder = async (
         branch_id,
         supplier_id,
         purchase_type_id,
-        dispatch_type_id
+        dispatch_type_id,
+        first_weight_has_goods
       )
       VALUES (
         CONCAT(TO_CHAR(CURRENT_DATE, 'YYYYMMDD'), LPAD(nextval('delivery_order_seq')::text, 4, '0')),
@@ -304,7 +323,8 @@ const createDeliveryOrder = async (
         $13, -- branch_id
         $14, -- supplier_id
         $15, -- purchase_type_id
-        $16  -- dispatch_type_id
+        $16, -- dispatch_type_id
+        $17  -- first_weight_has_goods
       )
       RETURNING order_number;
     `;
@@ -329,6 +349,7 @@ const createDeliveryOrder = async (
       validSupplierId,
       validPurchaseTypeId,
       dispatch_type_id,
+      firstWeightHasGoods,
     ]);
 
     const orderNumber = result.rows[0].order_number;
@@ -381,7 +402,7 @@ const createDeliveryOrder = async (
           productId,
           1, // Default packing type
           order.unit,
-          getOrderMeasurement(order),
+          firstWeightHasGoods ? getOrderMeasurement(order) : 0,
           source,
           destinationId,
           transaction_type,
@@ -396,7 +417,7 @@ const createDeliveryOrder = async (
           order.id,
           order.packing_type_id || order.packing_type || 1,
           order.unit,
-          getOrderMeasurement(order),
+          firstWeightHasGoods ? getOrderMeasurement(order) : 0,
           source,
           destinationId,
           transaction_type,
@@ -644,6 +665,7 @@ const createDeliveryAndFinishedOrderV2 = async (
   purchase_type_id,
   dispatch_type_id,
   order_items,
+  has_goods = true,
 ) => {
   const client = await pool.connect();
   console.log("ORDER ITEMS TYPE:", typeof order_items);
@@ -651,6 +673,55 @@ const createDeliveryAndFinishedOrderV2 = async (
 
   try {
     await client.query("BEGIN");
+
+    const cargoError = validateCargo({
+      hasGoods: has_goods,
+      orderItems: order_items,
+    });
+    if (cargoError) {
+      await client.query("ROLLBACK");
+      return { success: false, message: cargoError };
+    }
+
+    const firstWeightResult = await client.query(
+      `SELECT first_weight_has_goods FROM tos_delivery_orders WHERE id = $1 FOR UPDATE`,
+      [order_id],
+    );
+    if (firstWeightResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { success: false, message: "Delivery order not found" };
+    }
+    const firstWeightHasGoods = firstWeightResult.rows[0].first_weight_has_goods;
+    if (firstWeightHasGoods === true) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        message:
+          "A vehicle loaded on the first weight must be empty on the second weight",
+      };
+    }
+    if (firstWeightHasGoods === false && has_goods !== true) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        message:
+          "A vehicle empty on the first weight must be loaded on the second weight",
+      };
+    }
+    const existingProductsResult = await client.query(
+      `SELECT id, product_id FROM tos_finished_orders WHERE delivery_order_id = $1 AND isactive = true ORDER BY id`,
+      [order_id],
+    );
+    if (firstWeightHasGoods === false) {
+      const lockError = assertLockedProducts(
+        existingProductsResult.rows,
+        order_items,
+      );
+      if (lockError) {
+        await client.query("ROLLBACK");
+        return { success: false, message: lockError };
+      }
+    }
 
     // ✅ Validate or create customer
     const customerId = await resolveCustomerId(client, customer_name);
@@ -766,7 +837,27 @@ const createDeliveryAndFinishedOrderV2 = async (
 
       console.log("order.id", order);
 
-      if (typeof order.id === "string") {
+      const existingProduct = existingProductsResult.rows.find(
+        (item) => String(item.product_id) === String(getProductId(order)),
+      );
+      if (firstWeightHasGoods === false && existingProduct) {
+        await client.query(
+          `UPDATE tos_finished_orders
+           SET measurement = $1, packing_type_id = $2, unit = $3,
+               source = $4, destination = $5, transaction_type = $6,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $7`,
+          [
+            getOrderMeasurement(order),
+            order.packing_type_id || order.packing_type || 1,
+            order.unit,
+            sourceVal,
+            destinationVal,
+            transactionTypeVal,
+            existingProduct.id,
+          ],
+        );
+      } else if (typeof order.id === "string") {
         const payload = {
           name: order.product_name,
           id: order.id,

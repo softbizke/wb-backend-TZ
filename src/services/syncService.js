@@ -725,7 +725,8 @@ class SyncService {
   // =============================
 
   async syncWeighbridge() {
-    const SYNC_KEY = "wb_last_sync";
+    // Replay historical tickets newly eligible without a buying center.
+    const SYNC_KEY = "wb_all_products_optional_buying_center_last_sync";
 
     try {
       const lastSync = await this.getLastSync(SYNC_KEY);
@@ -738,360 +739,407 @@ class SyncService {
       const params = [];
 
       let where = `
-      WHERE
-        act.activity_type IN (10,20)
-        AND act.sw_at IS NOT NULL
-        -- AND act.sw_at < NOW() - INTERVAL '30 seconds'
-        AND act.qty IS NOT NULL
-        AND act.gross_weight IS NOT NULL
-        AND bc.cms_id IS NOT NULL
-        AND EXISTS (
-          SELECT 1
-          FROM tos_finished_orders eligible_order
-          INNER JOIN tos_product eligible_product
-            ON eligible_product.id = eligible_order.product_id
-          WHERE eligible_order.delivery_order_id = ord.id
-            AND (
-              eligible_product.id = 18
-              OR TRIM(LOWER(eligible_product.name)) = 'seed cotton'
+        WHERE act.activity_type IN (10,20)
+          AND act.fw_at IS NOT NULL
+          AND act.sw_at IS NOT NULL
+          AND act.tare_weight IS NOT NULL
+          AND act.gross_weight IS NOT NULL
+          AND act.qty IS NOT NULL
+          -- CMS rejects tickets with zero or negative net weight.
+          AND act.qty > 0
+          AND (
+            bc.cms_id IS NOT NULL
+            OR NOT EXISTS (
+              SELECT 1
+              FROM tos_finished_orders cotton_order
+              JOIN tos_product cotton_product
+                ON cotton_product.id = cotton_order.product_id
+              WHERE cotton_order.delivery_order_id = ord.id
+                AND (
+                  cotton_product.id = 18
+                  OR TRIM(LOWER(cotton_product.name)) = 'seed cotton'
+                )
             )
-        )
-    `;
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM tos_finished_orders eligible_order
+            LEFT JOIN tos_product eligible_product
+              ON eligible_product.id = eligible_order.product_id
+            WHERE eligible_order.delivery_order_id = ord.id
+            GROUP BY eligible_order.delivery_order_id
+            HAVING COUNT(*) = COUNT(eligible_product.cms_id)
+               AND COUNT(DISTINCT eligible_product.cms_id) = 1
+          )
+      `;
 
       if (safeSince) {
         params.push(safeSince);
 
         where += `
-        AND act.sw_at > $${params.length}
+        AND act.sw_at >= $${params.length}
       `;
       }
 
-      const query = `
-      SELECT
-        act.id AS activity_id,
-        act.activity_type,
+      let offset = 0;
+      let latestTimestamp;
+      const pageSize = 500;
 
-        -- canonical sync cursor: final second-weight time for the synced activity row
-        act.sw_at AS updated_at,
+      // Keep the starting timestamp fixed until every page has been accepted.
+      // This also drains batches with more than 500 identical timestamps.
+      while (true) {
+        const query = `
+        SELECT
+          act.id AS activity_id,
+          act.activity_type,
 
-        -- canonical first/second weight operator details for the synced activity row
-        act.fw_at,
-        act.fw_by,
-        act.sw_at,
-        act.sw_by,
+          -- canonical sync cursor: final second-weight time for the synced activity row
+          act.sw_at AS updated_at,
 
-        jsonb_build_object(
-          'id', fw_user.id,
-          'name', CONCAT(fw_user.first_name, ' ', fw_user.last_name),
-          'phone', fw_user.phone
-        ) AS fw_operator,
+          -- canonical first/second weight operator details for the synced activity row
+          act.fw_at,
+          act.fw_by,
+          act.sw_at,
+          act.sw_by,
 
-        jsonb_build_object(
-          'id', sw_user.id,
-          'name', CONCAT(sw_user.first_name, ' ', sw_user.last_name),
-          'phone', sw_user.phone
-        ) AS sw_operator,
+          jsonb_build_object(
+            'id', fw_user.id,
+            'name', CONCAT(fw_user.first_name, ' ', fw_user.last_name),
+            'phone', fw_user.phone
+          ) AS fw_operator,
 
-        ord.created_at,
+          jsonb_build_object(
+            'id', sw_user.id,
+            'name', CONCAT(sw_user.first_name, ' ', sw_user.last_name),
+            'phone', sw_user.phone
+          ) AS sw_operator,
 
-        ord.id AS delivery_order_id,
-        ord.order_number,
-        ord.truck_no,
-        ord.trailler_no,
-        ord.vessel_id,
-        ord.old_truck_no,
-        ord.isactive,
-        ord.do_no,
-        ord.order_type,
-        ord.driver_id,
-        ord.customer_id,
-        ord.supplier_id,
-        ord.transporter_id,
-        ord.purchase_type_id,
-        ord.dispatch_type_id,
-        ord.branch_id,
+          ord.created_at,
 
-        bc.id AS buying_center_id,
-        bc.cms_id AS buying_center_cms_id,
-        bc.name AS buying_center_name,
-        b.name AS branch_name,
-        b.code AS branch_code,
-        b.cms_id AS cms_branch_id,
+          ord.id AS delivery_order_id,
+          ord.order_number,
+          ord.truck_no,
+          ord.trailler_no,
+          ord.vessel_id,
+          ord.old_truck_no,
+          ord.isactive,
+          ord.do_no,
+          ord.order_type,
+          ord.driver_id,
+          ord.customer_id,
+          ord.supplier_id,
+          ord.transporter_id,
+          ord.purchase_type_id,
+          ord.dispatch_type_id,
+          ord.branch_id,
 
-        jsonb_build_object(
-          'id', drv.id,
-          'name', drv.name,
-          'license_no', drv.license_no,
-          'id_no', drv.id_no
-        ) AS driver,
+          bc.id AS buying_center_id,
+          bc.cms_id AS buying_center_cms_id,
+          bc.name AS buying_center_name,
+          b.name AS branch_name,
+          b.code AS branch_code,
+          b.cms_id AS cms_branch_id,
 
-        jsonb_build_object(
-          'id', cust.id,
-          'name', cust.name,
-          'bp_code', cust.bp_code
-        ) AS customer,
+          jsonb_build_object(
+            'id', drv.id,
+            'name', drv.name,
+            'license_no', drv.license_no,
+            'id_no', drv.id_no
+          ) AS driver,
 
-        jsonb_build_object(
-          'id', supp.id,
-          'name', supp.name,
-          'phone_number', supp.phone_number
-        ) AS supplier,
+          jsonb_build_object(
+            'id', cust.id,
+            'name', cust.name,
+            'bp_code', cust.bp_code
+          ) AS customer,
 
-        jsonb_build_object(
-          'id', trans.id,
-          'title', trans.title
-        ) AS transporter,
+          jsonb_build_object(
+            'id', supp.id,
+            'name', supp.name,
+            'phone_number', supp.phone_number
+          ) AS supplier,
 
-        jsonb_build_object(
-          'id', bc.id,
-          'title', bc.name,
-          'village', bc.village_name,
-          'cotton_type', bc.cotton_type_name,
-          'is_multiple_branches', bc.is_multiple_branches,
-          'branch_id', ord.branch_id,
-          'branch', jsonb_build_object(
+          jsonb_build_object(
+            'id', trans.id,
+            'title', trans.title
+          ) AS transporter,
+
+          jsonb_build_object(
+            'id', bc.id,
+            'title', bc.name,
+            'village', bc.village_name,
+            'cotton_type', bc.cotton_type_name,
+            'is_multiple_branches', bc.is_multiple_branches,
+            'branch_id', ord.branch_id,
+            'branch', jsonb_build_object(
+              'id', b.cms_id,
+              'code', b.code,
+              'name', b.name,
+              'population', b.population
+            )
+          ) AS buying_center,
+
+          jsonb_build_object(
             'id', b.cms_id,
             'code', b.code,
             'name', b.name,
             'population', b.population
-          )
-        ) AS buying_center,
+          ) AS branch,
 
-        jsonb_build_object(
-          'id', b.cms_id,
-          'code', b.code,
-          'name', b.name,
-          'population', b.population
-        ) AS branch,
+          jsonb_build_object(
+            'id', pt.id,
+            'title', pt.title
+          ) AS purchase_type,
 
-        jsonb_build_object(
-          'id', pt.id,
-          'title', pt.title
-        ) AS purchase_type,
+          jsonb_build_object(
+            'id', dt.id,
+            'title', dt.title
+          ) AS dispatch_type,
 
-        jsonb_build_object(
-          'id', dt.id,
-          'title', dt.title
-        ) AS dispatch_type,
+          jsonb_build_object(
+            'id', packty.id,
+            'name', packty.name
+          ) AS packing_type,
 
-        jsonb_build_object(
-          'id', packty.id,
-          'name', packty.name
-        ) AS packing_type,
+          act.gross_weight,
+          act.qty AS net_weight,
 
-        act.gross_weight,
-        act.qty AS net_weight,
+          COALESCE(
+            json_agg(
+              jsonb_build_object(
+                'quantity', f_ord.measurement,
+                'price_per_unit', COALESCE(f_ord.price_per_unit::numeric, 0),
+                'total_amount',
+                  COALESCE(f_ord.price_per_unit::numeric, 0)
+                  * COALESCE(NULLIF(f_ord.measurement, '')::numeric, 0),
+                'name', product.name,
+                'id', product.id,
+                'cms_id', product.cms_id,
+                'sku', product.item_code,
+                'unit', f_ord.unit,
+                'transaction_type', f_ord.transaction_type,
+                'source', f_ord.source,
+                'destination', COALESCE(dest.title, f_ord.destination::text),
+                'destination_id', dest.id,
+                'destination_type', dest.type,
+                'destination_details', jsonb_build_object(
+                  'id', dest.id,
+                  'title', dest.title,
+                  'type', dest.type
+                ),
+                'measurement', f_ord.measurement
+              )
+            ) FILTER (WHERE f_ord.id IS NOT NULL),
+            '[]'::json
+          ) AS products,
 
-        COALESCE(
-          json_agg(
-            jsonb_build_object(
-              'quantity', f_ord.measurement,
-              'price_per_unit', COALESCE(f_ord.price_per_unit::numeric, 0),
-              'total_amount',
-                COALESCE(f_ord.price_per_unit::numeric, 0)
-                * COALESCE(NULLIF(f_ord.measurement, '')::numeric, 0),
-              'name', product.name,
-              'id', product.id,
-              'cms_id', product.cms_id,
-              'sku', product.item_code,
-              'unit', f_ord.unit,
-              'transaction_type', f_ord.transaction_type,
-              'source', f_ord.source,
-              'destination', COALESCE(dest.title, f_ord.destination::text),
-              'destination_id', dest.id,
-              'destination_type', dest.type,
-              'destination_details', jsonb_build_object(
-                'id', dest.id,
-                'title', dest.title,
-                'type', dest.type
-              ),
-              'measurement', f_ord.measurement
-            )
-          ) FILTER (WHERE f_ord.id IS NOT NULL),
-          '[]'::json
-        ) AS products,
+          sw_ap.name AS sw_wb,
+          fw_ap.name AS fw_wb,
 
-        sw_ap.name AS sw_wb,
-        fw_ap.name AS fw_wb,
+          act10.delivery_order_id AS order10_id,
+          act10.truck_no AS truck_no_10,
+          act10.images,
+          act10.tare_weight,
+          act10.gross_weight AS gross_weight_10,
+          act10.qty AS net_weight_10,
+          act10.id AS activity10_id,
+          act10.created_at AS created10_at,
+          act10.fw_at AS fw10_at,
+          act10.sw_at AS sw10_at,
+          act10.fw_by AS fw10_by,
+          act10.sw_by AS sw10_by,
+          act10.avrg_w AS avrg_w,
+          act10.reason AS reason,
+          act10.sw_truck_no AS sw_truck_no,
 
-        act10.delivery_order_id AS order10_id,
-        act10.truck_no AS truck_no_10,
-        act10.images,
-        act10.tare_weight,
-        act10.gross_weight AS gross_weight_10,
-        act10.qty AS net_weight_10,
-        act10.id AS activity10_id,
-        act10.created_at AS created10_at,
-        act10.fw_at AS fw10_at,
-        act10.sw_at AS sw10_at,
-        act10.fw_by AS fw10_by,
-        act10.sw_by AS sw10_by,
-        act10.avrg_w AS avrg_w,
-        act10.reason AS reason,
-        act10.sw_truck_no AS sw_truck_no,
+          jsonb_build_object(
+            'id', fw10_user.id,
+            'name', CONCAT(fw10_user.first_name, ' ', fw10_user.last_name),
+            'phone', fw10_user.phone
+          ) AS fw10_user,
 
-        jsonb_build_object(
-          'id', fw10_user.id,
-          'name', CONCAT(fw10_user.first_name, ' ', fw10_user.last_name),
-          'phone', fw10_user.phone
-        ) AS fw10_user,
+          jsonb_build_object(
+            'id', sw10_user.id,
+            'name', CONCAT(sw10_user.first_name, ' ', sw10_user.last_name),
+            'phone', sw10_user.phone
+          ) AS sw10_user,
 
-        jsonb_build_object(
-          'id', sw10_user.id,
-          'name', CONCAT(sw10_user.first_name, ' ', sw10_user.last_name),
-          'phone', sw10_user.phone
-        ) AS sw10_user,
+          act20.delivery_order_id AS order20_id,
+          act20.gross_weight AS gross_weight_20,
+          act20.qty AS net_weight_20,
+          act20.created_at AS created20_at,
+          act20.fw_at AS fw20_at,
+          act20.sw_at AS sw20_at,
+          act20.id AS activity20_id,
+          act20.fw_by AS fw20_by,
+          act20.sw_by AS sw20_by,
+          act20.avrg_w AS avrg_w_20,
 
-        act20.delivery_order_id AS order20_id,
-        act20.gross_weight AS gross_weight_20,
-        act20.qty AS net_weight_20,
-        act20.created_at AS created20_at,
-        act20.fw_at AS fw20_at,
-        act20.sw_at AS sw20_at,
-        act20.id AS activity20_id,
-        act20.fw_by AS fw20_by,
-        act20.sw_by AS sw20_by,
-        act20.avrg_w AS avrg_w_20,
+          jsonb_build_object(
+            'id', fw20_user.id,
+            'name', CONCAT(fw20_user.first_name, ' ', fw20_user.last_name),
+            'phone', fw20_user.phone
+          ) AS fw20_user,
 
-        jsonb_build_object(
-          'id', fw20_user.id,
-          'name', CONCAT(fw20_user.first_name, ' ', fw20_user.last_name),
-          'phone', fw20_user.phone
-        ) AS fw20_user,
+          jsonb_build_object(
+            'id', sw20_user.id,
+            'name', CONCAT(sw20_user.first_name, ' ', sw20_user.last_name),
+            'phone', sw20_user.phone
+          ) AS sw20_user,
 
-        jsonb_build_object(
-          'id', sw20_user.id,
-          'name', CONCAT(sw20_user.first_name, ' ', sw20_user.last_name),
-          'phone', sw20_user.phone
-        ) AS sw20_user,
+          COALESCE(
+            SUM(NULLIF(f_ord.measurement, '')::numeric),
+            0
+          ) AS total_bags,
 
-        COALESCE(
-          SUM(NULLIF(f_ord.measurement, '')::numeric),
-          0
-        ) AS total_bags,
+          COALESCE(
+            SUM(
+              NULLIF(f_ord.measurement, '')::numeric
+              * COALESCE(f_ord.price_per_unit, 0)
+            ),
+            0
+          ) AS total_amount
 
-        COALESCE(
-          SUM(
-            NULLIF(f_ord.measurement, '')::numeric
-            * COALESCE(f_ord.price_per_unit, 0)
-          ),
-          0
-        ) AS total_amount
+        FROM tos_activities act
 
-      FROM tos_activities act
+        INNER JOIN tos_delivery_orders ord
+          ON ord.id = act.delivery_order_id
 
-      INNER JOIN tos_delivery_orders ord
-        ON ord.id = act.delivery_order_id
+        LEFT JOIN tos_buying_center bc
+          ON bc.id = ord.buying_center_id
 
-      INNER JOIN tos_buying_center bc
-        ON bc.id = ord.buying_center_id
+        LEFT JOIN tos_buying_center_branches b
+          ON b.cms_id = ord.branch_id
 
-      LEFT JOIN tos_buying_center_branches b
-        ON b.cms_id = ord.branch_id
+        LEFT JOIN tos_finished_orders f_ord
+          ON f_ord.delivery_order_id = ord.id
 
-      LEFT JOIN tos_finished_orders f_ord
-        ON f_ord.delivery_order_id = ord.id
+        INNER JOIN tos_product product
+          ON product.id = f_ord.product_id
 
-      INNER JOIN tos_product product
-        ON product.id = f_ord.product_id
+        LEFT JOIN tos_destinations dest
+          ON dest.id::text = f_ord.destination::text
 
-      LEFT JOIN tos_destinations dest
-        ON dest.id::text = f_ord.destination::text
+        LEFT JOIN tos_activities act10
+          ON ord.id = act10.delivery_order_id AND act10.activity_type = 10
 
-      LEFT JOIN tos_activities act10
-        ON ord.id = act10.delivery_order_id AND act10.activity_type = 10
+        LEFT JOIN tos_activities act20
+          ON ord.id = act20.delivery_order_id AND act20.activity_type = 20
 
-      LEFT JOIN tos_activities act20
-        ON ord.id = act20.delivery_order_id AND act20.activity_type = 20
+        LEFT JOIN tos_users fw_user ON fw_user.id = act.fw_by
+        LEFT JOIN tos_users sw_user ON sw_user.id = act.sw_by
 
-      LEFT JOIN tos_users fw_user ON fw_user.id = act.fw_by
-      LEFT JOIN tos_users sw_user ON sw_user.id = act.sw_by
+        LEFT JOIN tos_users fw10_user ON fw10_user.id = act10.fw_by
+        LEFT JOIN tos_users sw10_user ON sw10_user.id = act10.sw_by
+        LEFT JOIN tos_users fw20_user ON fw20_user.id = act20.fw_by
+        LEFT JOIN tos_users sw20_user ON sw20_user.id = act20.sw_by
 
-      LEFT JOIN tos_users fw10_user ON fw10_user.id = act10.fw_by
-      LEFT JOIN tos_users sw10_user ON sw10_user.id = act10.sw_by
-      LEFT JOIN tos_users fw20_user ON fw20_user.id = act20.fw_by
-      LEFT JOIN tos_users sw20_user ON sw20_user.id = act20.sw_by
+        LEFT JOIN tos_activity_points sw_ap ON sw_ap.id = act10.sw_wb
+        LEFT JOIN tos_activity_points fw_ap ON fw_ap.id = act10.fw_wb
 
-      LEFT JOIN tos_activity_points sw_ap ON sw_ap.id = act10.sw_wb
-      LEFT JOIN tos_activity_points fw_ap ON fw_ap.id = act10.fw_wb
+        LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
+        LEFT JOIN tos_drivers drv ON ord.driver_id = drv.id
+        LEFT JOIN tos_suppliers supp ON ord.supplier_id = supp.id
+        LEFT JOIN tos_transporter trans ON ord.transporter_id = trans.id
+        LEFT JOIN tos_dispatch_type dt ON ord.dispatch_type_id = dt.id
+        LEFT JOIN tos_purchase_type pt ON ord.purchase_type_id = pt.id
+        LEFT JOIN tos_packing_type packty ON ord.packing_type_id = packty.id
 
-      LEFT JOIN tos_customer cust ON ord.customer_id = cust.id
-      LEFT JOIN tos_drivers drv ON ord.driver_id = drv.id
-      LEFT JOIN tos_suppliers supp ON ord.supplier_id = supp.id
-      LEFT JOIN tos_transporter trans ON ord.transporter_id = trans.id
-      LEFT JOIN tos_dispatch_type dt ON ord.dispatch_type_id = dt.id
-      LEFT JOIN tos_purchase_type pt ON ord.purchase_type_id = pt.id
-      LEFT JOIN tos_packing_type packty ON ord.packing_type_id = packty.id
+        ${where}
 
-      ${where}
+        GROUP BY
+          act.id,
+          ord.id,
+          bc.id,
+          b.id,
+          drv.id,
+          cust.id,
+          supp.id,
+          trans.id,
+          pt.id,
+          dt.id,
+          packty.id,
+          act10.id,
+          act20.id,
+          sw_ap.id,
+          fw_ap.id,
+          fw_user.id,
+          sw_user.id,
+          fw10_user.id,
+          sw10_user.id,
+          fw20_user.id,
+          sw20_user.id
 
-      GROUP BY
-        act.id,
-        ord.id,
-        bc.id,
-        b.id,
-        drv.id,
-        cust.id,
-        supp.id,
-        trans.id,
-        pt.id,
-        dt.id,
-        packty.id,
-        act10.id,
-        act20.id,
-        sw_ap.id,
-        fw_ap.id,
-        fw_user.id,
-        sw_user.id,
-        fw10_user.id,
-        sw10_user.id,
-        fw20_user.id,
-        sw20_user.id
+        ORDER BY
+          updated_at ASC, act.id ASC
 
-      ORDER BY
-        updated_at ASC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `;
 
-      LIMIT 500
-    `;
+        const res = await this.db.query(query, params);
+        const rows = res.rows;
 
-      const res = await this.db.query(query, params);
-      const rows = res.rows;
+        if (!rows.length) {
+          break;
+        }
 
-      if (!rows.length) {
-        console.log("No WB data to sync");
-        return;
+        validateTicketOperationalProducts(rows);
+
+        const chunkSize = 100;
+        console.log(`Uploading ${rows.length} WB tickets in chunks of ${chunkSize}...`);
+        console.log(`Tickets ids in this batch: ${rows.map(r => r.activity_id).join(", ")}`);
+
+        for (let i = 0; i < rows.length; i += chunkSize) {
+          const chunk = rows.slice(i, i + chunkSize);
+
+          try {
+            await this.http.post(
+              `${API_URL}/tickets`,
+              { data: chunk },
+              {
+                headers: {
+                  Authorization: `Bearer ${API_KEY}`,
+                  Accept: "application/json",
+                },
+                timeout: 20000,
+              },
+            );
+          } catch (error) {
+            const details = {
+              status: error.response?.status ?? null,
+              response: error.response?.data ?? null,
+              // Index matches data[index] in CMS validation errors.
+              tickets: chunk.map((ticket, index) => ({
+                index,
+                activity_id: ticket.activity_id,
+                delivery_order_id: ticket.delivery_order_id,
+              })),
+            };
+            console.error("CMS ticket batch rejected:", JSON.stringify(details));
+            // Pass useful validation details to syncAll and the manual sync response.
+            // Do not propagate Axios config, authorization headers, or full payloads.
+            throw new Error(
+              `CMS ticket upload failed${details.status ? ` (HTTP ${details.status})` : ""}: ` +
+                (details.response == null
+                  ? error.message
+                  : JSON.stringify(details.response)),
+            );
+          }
+        }
+
+        latestTimestamp = rows[rows.length - 1]?.updated_at;
+        offset += rows.length;
+        if (rows.length < pageSize) break;
       }
-
-      validateTicketOperationalProducts(rows);
-
-      const chunkSize = 100;
-
-      for (let i = 0; i < rows.length; i += chunkSize) {
-        const chunk = rows.slice(i, i + chunkSize);
-
-        await this.http.post(
-          `${API_URL}/tickets`,
-          { data: chunk },
-          {
-            headers: {
-              Authorization: `Bearer ${API_KEY}`,
-              Accept: "application/json",
-            },
-            timeout: 20000,
-          },
-        );
-      }
-
-      const latestTimestamp = rows[rows.length - 1]?.updated_at;
 
       if (latestTimestamp) {
         await this.setLastSync(SYNC_KEY, latestTimestamp);
       }
 
-      console.log(`Synced ${rows.length} WB records`);
+      console.log(`Synced ${offset} WB records`);
     } catch (error) {
-      console.error(error);
       console.error("WB sync failed:", error.message);
+      throw error;
     }
   }
 

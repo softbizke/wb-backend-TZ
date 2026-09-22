@@ -6,6 +6,11 @@ const { resolveCustomerId } = require("./customerService");
 const { resolveSupplierId } = require("./supplierService");
 const { autoPrintReceipt } = require("../controllers/pdfController");
 const syncService = require("./syncService");
+const {
+  assertLockedProducts,
+  normalizeHasGoods,
+  validateCargo,
+} = require("../utils/weighmentValidation");
 
 // Create a connection pool
 const pool = new Pool({
@@ -537,6 +542,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
     destination,
     packing_id,
     dispatch_type_id,
+    has_goods,
   } = data;
   let activity_type_name;
   let qty;
@@ -549,6 +555,13 @@ const createOrUpdateActivityV2 = async (data, user) => {
     // Handle first weight (WBIN) without a delivery order
     if (!delivery_order_number && weightwb1) {
       let activity_check = 1;
+
+      const firstWeightHasGoods = normalizeHasGoods(has_goods, order_items);
+      const cargoError = validateCargo({
+        hasGoods: firstWeightHasGoods,
+        orderItems: order_items,
+      });
+      if (cargoError) return { success: false, message: cargoError };
 
       // Create a new delivery order
 
@@ -574,6 +587,7 @@ const createOrUpdateActivityV2 = async (data, user) => {
         destination,
         packing_id,
         dispatch_type_id,
+        firstWeightHasGoods,
       );
 
       if (!orderResult.success) {
@@ -634,13 +648,13 @@ const createOrUpdateActivityV2 = async (data, user) => {
 
     if (typeof delivery_order_number === "number") {
       checkOrderQuery = `
-        SELECT id, isactive, truck_no, trailler_no, activitycheck
+        SELECT id, isactive, truck_no, trailler_no, activitycheck, first_weight_has_goods
         FROM tos_delivery_orders 
         WHERE id = $1
       `;
     } else if (typeof delivery_order_number === "string") {
       checkOrderQuery = `
-        SELECT id, isactive, truck_no, trailler_no, activitycheck
+        SELECT id, isactive, truck_no, trailler_no, activitycheck, first_weight_has_goods
         FROM tos_delivery_orders 
         WHERE order_number = $1
       `;
@@ -658,6 +672,36 @@ const createOrUpdateActivityV2 = async (data, user) => {
     const order = orderResult.rows[0];
     if (!order.isactive) {
       return { success: false, message: "Delivery order is inactive" };
+    }
+    if (
+      order.activitycheck == 1 &&
+      order.first_weight_has_goods === true &&
+      has_goods === true
+    ) {
+      return {
+        success: false,
+        message:
+          "A vehicle loaded on the first weight must be empty on the second weight",
+      };
+    }
+    if (order.activitycheck == 1 && order.first_weight_has_goods === false) {
+      if (has_goods === false) {
+        return {
+          success: false,
+          message: "A vehicle empty on the first weight must be loaded on the second weight",
+        };
+      }
+      const cargoError = validateCargo({
+        hasGoods: true,
+        orderItems: order_items,
+      });
+      if (cargoError) return { success: false, message: cargoError };
+      const existingProducts = await pool.query(
+        `SELECT product_id FROM tos_finished_orders WHERE delivery_order_id = $1 AND isactive = true`,
+        [order.id],
+      );
+      const lockError = assertLockedProducts(existingProducts.rows, order_items);
+      if (lockError) return { success: false, message: lockError };
     }
     // Determine activity type and quantity
     if (order.activitycheck == 0) {
@@ -1256,6 +1300,7 @@ const getAllActivitiesV2 = async (search, order_no, mode = "completed") => {
         ord.branch_id,
         ord.purchase_type_id,
         ord.dispatch_type_id,
+        ord.first_weight_has_goods,
         ord.created_at,
 
         -- 🚛 Driver
@@ -1622,6 +1667,7 @@ const getActivity = async (delivery_order_id) => {
         ord.do_no,
         ord.order_type,
         ord.branch_id,
+        ord.first_weight_has_goods,
 
         -- Related main entities
         cust.id AS customer_id,

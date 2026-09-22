@@ -24,6 +24,7 @@ const createDeliveryOrder = async (req, res) => {
     destination,
     packing_id,
     dispatch_type_id,
+    has_goods,
   } = req.body;
 
   // console.log("REQ BODY", req.body);
@@ -61,6 +62,7 @@ const createDeliveryOrder = async (req, res) => {
       destination,
       packing_id,
       dispatch_type_id,
+      has_goods,
     );
 
     // Return response based on the result
@@ -99,6 +101,7 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       branch_id,
       purchase_type_id,
       dispatch_type_id,
+      has_goods = true,
     } = req.body;
 
     console.log("ORD", req.body);
@@ -129,6 +132,7 @@ const createDeliveryAndFinishedOrder = async (req, res) => {
       purchase_type_id || null,
       dispatch_type_id || null,
       order_items,
+      has_goods,
     );
 
     // Return the result
