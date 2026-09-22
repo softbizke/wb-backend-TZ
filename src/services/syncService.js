@@ -1086,8 +1086,8 @@ class SyncService {
         validateTicketOperationalProducts(rows);
 
         const chunkSize = 100;
-        console.log(`Uploading ${rows.length} WB tickets in chunks of ${chunkSize}...`);
-        console.log(`Tickets ids in this batch: ${rows.map(r => r.activity_id).join(", ")}`);
+        // console.log(`Uploading ${rows.length} WB tickets in chunks of ${chunkSize}...`);
+        // console.log(`Tickets ids in this batch: ${rows.map(r => r.activity_id).join(", ")}`);
 
         for (let i = 0; i < rows.length; i += chunkSize) {
           const chunk = rows.slice(i, i + chunkSize);
