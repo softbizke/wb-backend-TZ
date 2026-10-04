@@ -354,6 +354,8 @@ router.get(
 router.post(
   "/createcamera/v1",
   authenticateToken.authenticateToken,
+  require("../middlewares/operatorAccess").operatorAccess,
+  require("../middlewares/operatorAccess").adminOnly,
   activities.createOrUpdateCamera
 );
 router.get(

@@ -1,48 +1,14 @@
-const express = require("express");
-const router = express.Router();
-const manualModeController = require("../controllers/manualModeController");
-const authenticateToken = require("../middlewares/auth");
-
-// Routes
-router.post(
-  "/request",
-  authenticateToken.authenticateToken,
-  manualModeController.requestManualMode
-); // User requests manual mode
-router.post(
-  "/approve",
-  authenticateToken.authenticateToken,
-  manualModeController.approveManualMode
-); // Admin approves a request
-router.post(
-  "/extend",
-  authenticateToken.authenticateToken,
-  manualModeController.extendManualMode
-); // Admin extends a request
-router.post(
-  "/reject",
-  authenticateToken.authenticateToken,
-  manualModeController.rejectManualMode
-); // Admin rejects a request
-router.get(
-  "/all",
-  authenticateToken.authenticateToken,
-  manualModeController.getAllManualModeRequests
-); // Admin fetches all requests
-router.get(
-  "/status",
-  authenticateToken.authenticateToken,
-  manualModeController.currentUserMode
-); // Check current user mode
-
-router.post(
-  "/capture",
-  authenticateToken.authenticateToken,
-  manualModeController.postManualModeLog
-);
-router.post(
-  "/end",
-  authenticateToken.authenticateToken,
-  manualModeController.endManualModeSession
-);
+const router = require('express').Router();
+const controller = require('../controllers/manualModeController');
+const { authenticateToken } = require('../middlewares/auth');
+const { operatorAccess } = require('../middlewares/operatorAccess');
+router.use(authenticateToken, operatorAccess);
+router.post('/request', controller.requestManualMode);
+router.post('/approve', controller.approveManualMode);
+router.post('/extend', controller.extendManualMode);
+router.post('/reject', controller.rejectManualMode);
+router.get('/all', controller.getAllManualModeRequests);
+router.get('/status', controller.currentUserMode);
+router.post('/capture', controller.postManualModeLog);
+router.post('/end', controller.endManualModeSession);
 module.exports = router;

@@ -52,6 +52,7 @@ const getAllCameras = async (req, res) => {
 
 const createOrUpdateCamera = async (req, res) => {
   const {
+    id, role, device_id, capture_key,
     model,
     ip_address,
     rtsp_url,
@@ -70,6 +71,7 @@ const createOrUpdateCamera = async (req, res) => {
 
   try {
     const result = await activities.createOrUpdateCamera({
+      id, role, device_id, capture_key,
       model,
       ip_address,
       rtsp_url,
@@ -82,7 +84,7 @@ const createOrUpdateCamera = async (req, res) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error("Error in controller:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(error.status || 500).json({ success: false, message: error.status ? error.message : "Server error" });
   }
 };
 

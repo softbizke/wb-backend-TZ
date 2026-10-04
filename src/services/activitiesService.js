@@ -119,6 +119,8 @@ const getAllCameras = async () => {
         c.rtsp_url, 
         c.status, 
         c.configuration,
+        c.role, c.device_id, c.username,
+        (c.capture_key IS NOT NULL) AS has_capture_key,
         EXISTS (
           SELECT 1
           FROM tos_activity_points point
@@ -143,103 +145,57 @@ const getAllCameras = async () => {
 };
 
 const createOrUpdateCamera = async (cameraData) => {
+  const { id, model, ip_address, rtsp_url, status, configuration, username, password,
+    role = 'weighbridge', device_id, capture_key } = cameraData;
+  const fail = message => { throw Object.assign(new Error(message), { status: 400 }); };
+  if (!['weighbridge', 'gate_pass'].includes(role)) fail('Invalid camera role.');
+  if (!['active', 'inactive'].includes(status)) fail('Invalid camera status.');
+  if (role === 'gate_pass' && (typeof device_id !== 'string' || !device_id.trim() || device_id.length > 255)) fail('Gate cameras require a device ID.');
+  if (capture_key && (typeof capture_key !== 'string' || capture_key.length < 16 || capture_key.length > 255)) fail('Capture key must contain 16–255 characters.');
+  const client = await pool.connect();
   try {
-    const {
-      model,
-      ip_address,
-      rtsp_url,
-      status,
-      configuration,
-      username,
-      password,
-    } = cameraData;
-
-    const checkCameraQuery =
-      "SELECT * FROM tos_camera_information WHERE ip_address = $1";
-    const cameraResult = await pool.query(checkCameraQuery, [ip_address]);
-
-    if (cameraResult.rows.length === 0) {
-      const insertQuery = `
-        INSERT INTO tos_camera_information 
-        (model, ip_address, rtsp_url, status, configuration, username, password)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-      `;
-      const result = await pool.query(insertQuery, [
-        model,
-        ip_address,
-        rtsp_url,
-        status,
-        configuration,
-        username,
-        password,
-      ]);
-      return {
-        success: true,
-        message: "Camera created successfully",
-        id: result.rows[0].id,
-      };
-    } else {
-      const updateQuery = `
-        UPDATE tos_camera_information
-        SET model = $1, rtsp_url = $2, status = $3, configuration = $4, username = $5, password = $6
-        WHERE ip_address = $7
-        RETURNING id
-      `;
-      const result = await pool.query(updateQuery, [
-        model,
-        rtsp_url,
-        status,
-        configuration,
-        username,
-        password,
-        ip_address,
-      ]);
-      return {
-        success: true,
-        message: "Camera updated successfully",
-        id: result.rows[0].id,
-      };
+    await client.query('BEGIN');
+    // Serialize role changes with activity-point camera assignment.
+    await client.query('SELECT pg_advisory_xact_lock(6100401)');
+    const existing = await client.query(id ? 'SELECT * FROM tos_camera_information WHERE id=$1 FOR UPDATE' : 'SELECT * FROM tos_camera_information WHERE ip_address=$1 FOR UPDATE', [id || ip_address]);
+    const camera = existing.rows[0];
+    if (id && !camera) fail('Camera not found.');
+    if (role === 'gate_pass' && camera) {
+      const linked = await client.query('SELECT id FROM tos_activity_points WHERE $1 = ANY(camera_ids)', [camera.id]);
+      if (linked.rows.length) fail('Unlink this camera from the weighbridge before assigning the Gate Pass role.');
     }
+    if (role === 'gate_pass' && !capture_key && !camera?.capture_key) fail('Gate cameras require a capture key.');
+    const values = [model, ip_address, rtsp_url, status, configuration, username || camera?.username,
+      password || camera?.password, role, device_id?.trim() || null, capture_key || camera?.capture_key || null];
+    const result = camera
+      ? await client.query(`UPDATE tos_camera_information SET model=$1,ip_address=$2,rtsp_url=$3,status=$4,configuration=$5,username=$6,password=$7,role=$8,device_id=$9,capture_key=$10,updated_at=NOW() WHERE id=$11 RETURNING id`, [...values,camera.id])
+      : await client.query(`INSERT INTO tos_camera_information (model,ip_address,rtsp_url,status,configuration,username,password,role,device_id,capture_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, values);
+    await client.query('COMMIT');
+    return { success: true, message: 'Camera saved successfully', id: result.rows[0].id };
   } catch (error) {
-    console.error("Error managing camera:", error);
-    throw new Error("Server error");
-  }
+    await client.query('ROLLBACK');
+    if (error.code === '23505') fail('Camera device ID or IP address is already in use.');
+    throw error;
+  } finally { client.release(); }
 };
 
-const createOrUpdateActivityPoint = async (
-  name,
-  address,
-  isactive,
-  camera_ids,
-) => {
+const createOrUpdateActivityPoint = async (name, address, isactive, camera_ids = []) => {
+  const client = await pool.connect();
   try {
-    const checkActivityPointQuery =
-      "SELECT * FROM tos_activity_points WHERE name = $1";
-    const activityPointResult = await pool.query(checkActivityPointQuery, [
-      name,
-    ]);
-
-    if (activityPointResult.rows.length === 0) {
-      const insertQuery = `
-        INSERT INTO tos_activity_points (name, address, isactive, camera_ids)
-        VALUES ($1, $2, $3, $4)
-      `;
-      await pool.query(insertQuery, [name, address, isactive, camera_ids]);
-      return { success: true, message: "Activity point created successfully" };
-    } else {
-      const updateQuery = `
-        UPDATE tos_activity_points
-        SET isactive = $1, address = $2, camera_ids = $3
-        WHERE name = $4
-      `;
-      await pool.query(updateQuery, [isactive, address, camera_ids, name]);
-      return { success: true, message: "Activity point updated successfully" };
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(6100401)');
+    if (!Array.isArray(camera_ids)) throw new Error('Invalid camera selection.');
+    if (camera_ids.length) {
+      const allowed = await client.query("SELECT id FROM tos_camera_information WHERE id=ANY($1::int[]) AND role='weighbridge' AND status='active'", [camera_ids]);
+      if (allowed.rows.length !== new Set(camera_ids.map(Number)).size) throw new Error('Only active weighbridge cameras can be assigned.');
     }
-  } catch (error) {
-    console.error("Error creating or updating activity point:", error);
-    throw new Error("Server error");
-  }
+    const existing = await client.query('SELECT id FROM tos_activity_points WHERE name=$1', [name]);
+    if (existing.rows.length) await client.query('UPDATE tos_activity_points SET isactive=$1,address=$2,camera_ids=$3 WHERE name=$4', [isactive,address,camera_ids,name]);
+    else await client.query('INSERT INTO tos_activity_points (name,address,isactive,camera_ids) VALUES ($1,$2,$3,$4)', [name,address,isactive,camera_ids]);
+    await client.query('COMMIT');
+    return { success: true, message: 'Activity point saved successfully' };
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
 };
 
 const createOrUpdateActivity = async (

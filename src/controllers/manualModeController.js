@@ -1,159 +1,25 @@
-const manualMode = require("../services/manualModeService");
-
-// User requests manual mode
-module.exports.requestManualMode = async (req, res) => {
+const manualMode = require('../services/manualModeService');
+const handle = (operation, { review = false, status = false } = {}) => async (req,res) => {
   try {
-    const { reason } = req.body;
-    const user = req.user;
-
-    const result = await manualMode.requestManualMode(user.id, reason);
-
-    if (result.status) {
-      return res.status(200).json({
-        success: true,
-        message: result.message,
-        data: result.data,
-      });
-    } else {
-      return res.status(409).json({ success: false, message: result.message });
+    const scope = manualMode.scopeValue(req.body?.scope ?? req.query.scope);
+    if (review && !req.operator?.admin) {
+      return res.status(403).json({ success: false, message: 'You cannot manage manual mode for this scope.' });
     }
+    const result = await operation(req,scope);
+    return res.status(status || result.status ? 200 : 409).json({ success: result.status, message: result.message, data: result.data || null });
   } catch (error) {
-    console.error("Error in requestManualMode:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    if (!error.status) console.error('Manual mode error:', error);
+    return res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Manual mode operation failed.' });
   }
 };
-
-// Admin approves manual mode
-module.exports.approveManualMode = async (req, res) => {
-  try {
-    const { expires_at, id } = req.body;
-    const result = await manualMode.approveManualMode(id, expires_at);
-
-    if (result.status) {
-      return res.status(200).json({
-        success: true,
-        message: result.message,
-        data: result.data,
-      });
-    } else {
-      return res.status(409).json({ success: false, message: result.message });
-    }
-  } catch (error) {
-    console.error("Error in approveManualMode:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Admin rejects manual mode
-module.exports.rejectManualMode = async (req, res) => {
-  try {
-    const { id, reason } = req.body;
-    const result = await manualMode.rejectManualMode(id, reason);
-
-    if (result.status) {
-      return res.status(200).json({
-        success: true,
-        message: result.message,
-        data: result.data,
-      });
-    } else {
-      return res.status(409).json({ success: false, message: result.message });
-    }
-  } catch (error) {
-    console.error("Error in rejectManualMode:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Admin gets all manual mode requests
-module.exports.getAllManualModeRequests = async (req, res) => {
-  try {
-    const result = await manualMode.getAllManualModeRequests();
-
-    if (result.status) {
-      return res.status(200).json({
-        success: true,
-        message: result.message,
-        data: result.data,
-      });
-    } else {
-      return res.status(409).json({ success: false, message: result.message });
-    }
-  } catch (error) {
-    console.error("Error in getAllManualModeRequests:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Check current user's manual mode status
-module.exports.currentUserMode = async (req, res) => {
-  try {
-    const user = req.user;
-    const result = await manualMode.isUserInManualMode(user.id);
-
-    return res.status(200).json({
-      success: result.status,
-      message: result.message,
-      data: result.data || null,
-    });
-  } catch (error) {
-    console.error("Error in currentUserMode:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-//manual log
-module.exports.postManualModeLog = async (req, res) => {
-  try {
-    const { truck, camera_id } = req.body;
-    console.log("MANUAL MODE:: P ->", truck, " WB -> ", camera_id);
-    const result = await manualMode.postManualModeLog(truck, camera_id);
-    return res.status(200).json({
-      success: result.status,
-      message: result.message,
-      data: result.data || null,
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-module.exports.extendManualMode = async (req, res) => {
-  try {
-    const { expires_at, id } = req.body;
-    const result = await manualMode.extendManualMode(id, expires_at);
-
-    if (result.status) {
-      return res.status(200).json({
-        success: true,
-        message: result.message,
-        data: result.data,
-      });
-    } else {
-      return res.status(409).json({ success: false, message: result.message });
-    }
-  } catch (error) {
-    console.error("Error in extendManualMode:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-module.exports.endManualModeSession = async (req, res) => {
-  try {
-    const { id } = req.body;
-    const result = await manualMode.endManualModeSession(id);
-
-    if (result.status) {
-      return res.status(200).json({
-        success: true,
-        message: result.message,
-        data: result.data,
-      });
-    } else {
-      return res.status(409).json({ success: false, message: result.message });
-    }
-  } catch (error) {
-    console.error("Error in endManualModeSession:", error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
+exports.requestManualMode = handle((req,scope) => manualMode.requestManualMode(req.user.id,req.body.reason,scope));
+exports.approveManualMode = handle((req,scope) => manualMode.approveManualMode(req.body.id,req.body.expires_at,scope,req.user.id), { review: true });
+exports.rejectManualMode = handle((req,scope) => manualMode.rejectManualMode(req.body.id,req.body.reason,scope,req.user.id), { review: true });
+exports.getAllManualModeRequests = handle((req,scope) => manualMode.getAllManualModeRequests(scope), { review: true });
+exports.currentUserMode = handle((req,scope) => manualMode.isUserInManualMode(req.user.id,scope), { status: true });
+exports.extendManualMode = handle((req,scope) => manualMode.extendManualMode(req.body.id,req.body.expires_at,scope), { review: true });
+exports.endManualModeSession = handle((req,scope) => manualMode.endManualModeSession(req.body.id,scope), { review: true });
+exports.postManualModeLog = handle((req,scope) => {
+  if (scope !== 'weighbridge') throw Object.assign(new Error('Use the gate pass Create action for gate captures.'), { status: 400 });
+  return manualMode.postManualModeLog(req.body.truck,req.body.camera_id,req.user.id);
+});
