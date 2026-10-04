@@ -1,8 +1,10 @@
 const net = require('net');
-const { IP_ADDRESS } = require('../config/printerConfig');
-// Same ESC/POS network printer and receipt heading as the weighbridge ticket.
+const { GATE_PASS_IP_ADDRESS, GATE_PASS_PORT } = require('../config/printerConfig');
+// Dedicated gate pass ESC/POS printer; receipt heading follows the WB ticket.
 const clean = value => String(value ?? '').replace(/[\x00-\x1f\x7f]/g, ' ');
 function printGatePass(pass) {
+  const host = GATE_PASS_IP_ADDRESS?.trim();
+  if (!host) throw Object.assign(new Error('Gate pass printer is not configured. Set GATE_PASS_IP_ADDRESS in src/config/printerConfig.js.'), { status: 503 });
   const lines = [
     'P.O. BOX 11074, MWANZA, TANZANIA', 'Phone: 0767461986',
     'GATE PASS TICKET', '--------------------------------',
@@ -18,7 +20,7 @@ function printGatePass(pass) {
     'Status: APPROVED', '--------------------------------', '', '', ''
   ];
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host: process.env.GATE_PASS_PRINTER_IP || IP_ADDRESS, port: 9100 });
+    const socket = net.createConnection({ host, port: GATE_PASS_PORT || 9100 });
     socket.setTimeout(10000);
     socket.once('timeout', () => socket.destroy(new Error('Printer timed out')));
     socket.once('error', reject);
