@@ -68,6 +68,11 @@ router.get('/', wrap(async (req, res) => {
   const result = await pool.query(`SELECT * FROM tos_gate_passes ${where} ORDER BY captured_at DESC,id DESC LIMIT 25 OFFSET $3`, [...params,(page-1)*25]);
   res.json({ data: result.rows, total: Number(count.rows[0].count), can_review: req.actor.can_review, can_manage_manual: req.actor.can_manage_manual });
 }));
+router.get('/analytics', wrap(async (req,res) => {
+  const { getGatePassAnalytics } = require('../services/gatePassAnalytics');
+  const data = await getGatePassAnalytics(pool, req.query.startDate, req.query.endDate);
+  res.json({ success: true, data });
+}));
 router.get('/:id', wrap(async (req,res) => {
   if (!/^\d+$/.test(req.params.id)) fail('Invalid ID');
   const { rows } = await pool.query('SELECT * FROM tos_gate_passes WHERE id=$1',[req.params.id]);

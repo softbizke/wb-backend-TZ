@@ -143,7 +143,7 @@ const createUser = async (
 };
 
 // Service to update a user
-const updateUser = async (phone, first_name, last_name, password, isactive) => {
+const updateUser = async (phone, first_name, last_name, password, isactive, user_type) => {
   try {
     // Check if the user exists
     const checkUserQuery = "SELECT * FROM tos_users WHERE phone = $1";
@@ -185,6 +185,14 @@ const updateUser = async (phone, first_name, last_name, password, isactive) => {
     if (isactive !== undefined) {
       updateQuery += `isactive = $${counter}, `;
       values.push(isactive);
+      counter++;
+    }
+
+    if (user_type !== undefined) {
+      const role = await pool.query('SELECT id FROM tos_user_type WHERE id=$1 AND isactive=true', [user_type]);
+      if (!role.rows.length) return { success: false, message: 'Select an active user role.' };
+      updateQuery += `user_type_id = $${counter}, `;
+      values.push(role.rows[0].id);
       counter++;
     }
 
@@ -389,17 +397,17 @@ const getUser = async (ID) => {
     console.log(ID);
     // Base query to retrieve users
     let query =
-      "SELECT id, first_name,last_name,email,user_type_id,isactive FROM tos_users";
+      "SELECT u.id,u.first_name,u.last_name,u.email,u.user_type_id,u.isactive,t.name AS role_name FROM tos_users u LEFT JOIN tos_user_type t ON t.id=u.user_type_id";
     const queryParams = [];
 
     // Add a WHERE clause if ID parameter is provided
     if (ID) {
-      query += " WHERE id = $1";
+      query += " WHERE u.id = $1";
       queryParams.push(ID); // Use the ID as-is since it’s likely numeric
     }
 
     // Append ORDER BY clause
-    query += " ORDER BY id ASC";
+    query += " ORDER BY u.id ASC";
 
     //console.log(query);
     // Execute the query with parameters

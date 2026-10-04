@@ -18,6 +18,7 @@ Module._load = function(name, ...args) {
   return originalLoad.call(this, name, ...args);
 };
 const manual = require('../src/services/manualModeService');
+const users = require('../src/services/usersService');
 const cameras = require('../src/services/activitiesService');
 const controller = require('../src/controllers/manualModeController');
 require('../src/routes/gatePassRoutes');
@@ -33,7 +34,13 @@ async function call(route, body, key = '', id) {
 (async () => {
   try {
     await knex.raw(`CREATE SCHEMA ${schema}`);
-    await knex.schema.createTable('tos_users', t => { t.increments('id'); t.string('first_name'); t.string('last_name'); t.string('phone'); });
+    await knex.schema.createTable('tos_users', t => { t.increments('id'); t.string('first_name'); t.string('last_name'); t.string('phone'); t.string('email'); t.boolean('isactive').defaultTo(true); t.integer('user_type_id'); });
+    await knex.schema.createTable('tos_user_type', t => { t.increments('id'); t.string('name'); t.boolean('isactive'); t.timestamp('created_at').defaultTo(knex.fn.now()); });
+    await knex('tos_user_type').insert({id:2,name:'Existing role',isactive:true});
+    const roleMigration = require('../migrations/20261004000300_gate_pass_operator_role');
+    await knex.transaction(trx => roleMigration.up(trx));
+    await knex.transaction(trx => roleMigration.up(trx));
+    assert.equal((await knex('tos_user_type').where({name:'Gate Pass Operator'})).length,1);
     await knex.schema.createTable('tos_manual_mode', t => {
       t.increments('id'); t.integer('user_id'); t.string('status').defaultTo('pending'); t.text('reason'); t.timestamp('expires_at'); t.timestamps(true,true);
     });
@@ -49,7 +56,7 @@ async function call(route, body, key = '', id) {
     await knex('tos_drivers').insert([{id:1,name:'Selected Driver',id_no:'ID123',is_active:true},{id:2,name:'Inactive',is_active:false}]);
     await knex('tos_transporter').insert({id:1,title:'Selected Transporter',isactive:true});
     await knex('tos_buying_center').insert({id:1,name:'Center',village_name:'Village',is_active:true});
-    await knex('tos_users').insert({ id: 1, first_name: 'Operator' });
+    await knex('tos_users').insert({ id: 1, first_name: 'Operator', phone: 'test-phone' });
     await knex('tos_manual_mode').insert({ user_id: 1, status: 'ended' });
     await knex('tos_camera_information').insert({ model: 'Existing WB', ip_address: '192.0.2.1' });
     await migration.up(knex);
@@ -90,6 +97,25 @@ async function call(route, body, key = '', id) {
     await knex('tos_drivers').where({id:1}).update({name:'Renamed Driver'});
     assert.equal((await knex('tos_gate_passes').where({id:passId}).first()).driver_name,'Selected Driver');
     assert.equal((await call('patch /:id',{...edit,version:3},'',passId)).code,409);
+    const now = new Date();
+    const historical = new Date('2000-01-01T00:00:00Z');
+    await knex('tos_gate_passes').insert([
+      {camera_id:'TEST',captured_at:historical,plate:'OLD',original_plate:'OLD',status:'approved',reviewed_at:historical},
+      {camera_id:'PENDING',captured_at:now,plate:'PENDING',original_plate:'PENDING',status:'pending'},
+      {camera_id:'REJECTED',captured_at:now,plate:'REJECTED',original_plate:'REJECTED',status:'rejected',reviewed_at:now}
+    ]);
+    await knex('tos_gate_pass_audit').insert([1,2].map(()=>({gate_pass_id:passId,user_id:1,user_name:'Operator',action:'print_sent',changes:'{}'})));
+    const analytics = require('../src/services/gatePassAnalytics');
+    const db = {query: async (sql,params) => { const client=await knex.client.acquireConnection(); try { return await client.query(sql,params); } finally { await knex.client.releaseConnection(client); } }};
+    const stats = await analytics.getGatePassAnalytics(db,new Date(now.getTime()-3600000).toISOString(),new Date(now.getTime()+3600000).toISOString());
+    assert.deepEqual(stats,{total_issued:2,issued:1,captured:3,pending:1,rejected:1,manual:1,printed:1});
+    await assert.rejects(()=>analytics.getGatePassAnalytics(db,'bad','bad'));
+    const operatorRole = (await knex('tos_user_type').where({name:'Gate Pass Operator'}).first()).id;
+    assert.equal((await users.updateUser('test-phone',undefined,undefined,undefined,undefined,operatorRole)).success,true);
+    assert.equal((await users.getUser(1)).role_name,'Gate Pass Operator');
+    await assert.rejects(()=>roleMigration.down(knex),/Reassign/);
+    await knex('tos_users').where({id:1}).update({user_type_id:null});
+    await roleMigration.down(knex);
     await manual.endManualModeSession(gate.data.id,'gate_pass');
     assert.ok((await manual.approveManualMode(wb.data.id,future,'weighbridge',2)).status);
     assert.equal((await call('post /manual',{plate:'T999ABC'})).code,403);
@@ -129,7 +155,7 @@ async function call(route, body, key = '', id) {
     await knex('tos_manual_mode').where({scope:'gate_pass'}).del();
     await require('../migrations/20261004000200_gate_pass_master_details').down(knex);
     await migration.down(knex);
-    console.log('PASS: migrations, independent manual scopes, authorization, expiry, concurrent requests, manual audit, dynamic cameras, key rotation and WB assignment isolation.');
+    console.log('PASS: migrations, independent manual scopes, authorization, expiry, concurrent requests, manual audit, dynamic cameras, key rotation, WB assignment isolation, role assignment and analytics (including reprint deduplication).');
   } finally {
     await Promise.all(pools.map(pool=>pool.end()));
     await knex.raw(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);

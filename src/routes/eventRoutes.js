@@ -54,6 +54,8 @@ router.post("/anprEvents/v1", anprEvents.postnprActivitylog);
 router.post(
   "/createuserstype/v1",
   authenticateToken.authenticateToken,
+  require("../middlewares/operatorAccess").operatorAccess,
+  require("../middlewares/operatorAccess").adminOnly,
   users.createUserTypeController
 );
 router.get(
@@ -65,12 +67,16 @@ router.get(
 router.post(
   "/createusers/v1",
   authenticateToken.authenticateToken,
+  require("../middlewares/operatorAccess").operatorAccess,
+  require("../middlewares/operatorAccess").adminOnly,
   users.createUser
 );
 // Update User by email
 router.put(
   "/updateusers/v1",
   authenticateToken.authenticateToken,
+  require("../middlewares/operatorAccess").operatorAccess,
+  require("../middlewares/operatorAccess").adminOnly,
   users.updateUser
 );
 // CHheck if username and password are valid

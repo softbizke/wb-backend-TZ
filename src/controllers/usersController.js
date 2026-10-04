@@ -89,7 +89,7 @@ const createUser = async (req, res) => {
 
 // Update a user
 const updateUser = async (req, res) => {
-  const { phone, first_name, last_name, password, isactive } = req.body; // Get email and other fields from the body
+  const { phone, first_name, last_name, password, isactive, user_type } = req.body; // Get email and other fields from the body
 
   try {
     // Validate that email is provided
@@ -101,7 +101,7 @@ const updateUser = async (req, res) => {
     // }
 
     // Validate that at least one other field (first_name, last_name, password, or isactive) is provided
-    if (!first_name && !last_name && !password && isactive === undefined) {
+    if (!first_name && !last_name && !password && isactive === undefined && user_type === undefined) {
       return res.status(400).json({
         success: false,
         message:
@@ -114,7 +114,8 @@ const updateUser = async (req, res) => {
       first_name,
       last_name,
       password,
-      isactive
+      isactive,
+      user_type
     );
 
     if (result.success) {

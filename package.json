@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node test/syncService.test.js && node test/weighmentValidation.test.js && node test/gatePass.test.js"
+    "test": "node test/syncService.test.js && node test/weighmentValidation.test.js && node test/gatePass.test.js && node test/gatePassOperator.test.js"
   },
   "keywords": [],
   "author": "",

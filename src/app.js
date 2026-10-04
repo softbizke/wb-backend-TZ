@@ -18,6 +18,8 @@ app.use((req, res, next) => { console.log(`${req.method} ${req.url}`); next(); }
 
 app.use("/snapshots", express.static(path.join(__dirname, "../public/snapshots")));
 
+app.use('/api', require('./middlewares/gatePassOperatorAccess').gatePassOperatorAccess);
+
 app.use('/api/gate-passes', require('./routes/gatePassRoutes'));
 app.use('/api', eventRoutes);
 app.use("/api/manual-mode", manualModeRoutes);
